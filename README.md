@@ -5,6 +5,9 @@ No template DSL, no VDOM, no magic compile step — just explicit reactivity and
 
 If your UI should be fast **and** your code should still look like code, this is for you.
 
+<img width="992" height="714" alt="image" src="https://github.com/user-attachments/assets/f5a5f27d-a71a-4a7c-b850-c78cbee0cbfb" />
+
+
 ## The Pitch
 
 - **JS-first UI**: DOM tags are functions (`Div`, `Span`, `Button`).
