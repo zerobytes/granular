@@ -7,6 +7,9 @@ If your UI should be fast **and** your code should still look like code, this is
 
 <img width="1018" height="494" alt="image" src="https://github.com/user-attachments/assets/9080dde0-c3b8-43e4-a1b2-88c05238ea6f" />
 
+[<img width="153" height="47" alt="image" src="https://github.com/user-attachments/assets/06b38444-4e19-4011-ad2e-95de98d291fd" />](https://granular.web.app/#/docs/granular/quick-start)
+[<img width="163" height="46" alt="image" src="https://github.com/user-attachments/assets/43ac4088-125b-441c-8f17-bfc22bf989e1" />](https://granular.web.app/#/landing)
+
 
 
 ## The Pitch
