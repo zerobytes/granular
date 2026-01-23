@@ -131,9 +131,7 @@ function resolveTarget(target) {
 }
 
 function isPageDefinition(value) {
-  if (typeof value !== 'function') return false;
-  if (value.__zbFactory === true) return true;
-  return false;
+  return typeof value === 'function';
 }
 
 function isPromise(value) {
@@ -660,14 +658,31 @@ export class Router {
       ...(typeof ctx.route.props === 'function' ? ctx.route.props(ctx) : {}),
     };
 
-    const page = PageClass?.__zbFactory ? PageClass(props) : new PageClass(props);
-    page.router = this;
-    page.route = ctx.route;
-    page.params = ctx.params;
-    page.query = ctx.query;
-    page.location = ctx.location;
-    page.data = ctx.data;
-    page.state = ctx.state;
+    let page;
+    let isClassBased = false;
+    
+    // Check if it's a class (not an arrow function and has prototype methods)
+    if (PageClass.prototype && PageClass.prototype.constructor === PageClass && !PageClass.__zbFactory) {
+      try {
+        page = new PageClass(props);
+        isClassBased = true;
+      } catch (e) {
+        page = PageClass(props);
+      }
+    } else {
+      page = PageClass(props);
+    }
+    
+    // Only set router/route/etc on class instances, not on renderables
+    if (isClassBased && page && typeof page === 'object') {
+      page.router = this;
+      page.route = ctx.route;
+      page.params = ctx.params;
+      page.query = ctx.query;
+      page.location = ctx.location;
+      page.data = ctx.data;
+      page.state = ctx.state;
+    }
 
     const prev = this.#current;
     if (prev?.page) {
