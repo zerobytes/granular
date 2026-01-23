@@ -1,0 +1,12 @@
+{
+  "editor.defaultFormatter": "vscode.typescript-language-features",
+  "javascript.format.semicolons": "ignore",
+  "javascript.format.insertSpaceBeforeFunctionParenthesis": false,
+  "javascript.format.placeOpenBraceOnNewLineForFunctions": false,
+  "javascript.format.placeOpenBraceOnNewLineForControlBlocks": false,
+  "javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis": false,
+  "typescript.format.semicolons": "ignore",
+  "[typescript]": {
+    "editor.defaultFormatter": "vscode.typescript-language-features"
+  }
+}

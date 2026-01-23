@@ -1,0 +1,13 @@
+export function state(initial: any): {};
+export function createStateFromAdapter(adapter: any): {};
+export function mutateAdapter(adapter: any, optimistic: any, mutation: any, options?: {}): Promise<any>;
+export function isState(value: any): boolean;
+export function isComputed(value: any): boolean;
+export function isStatePath(value: any): any;
+export function readState(value: any): any;
+export function readStateFromRoot(value: any, root: any): any;
+export function subscribeState(value: any, fn: any): any;
+export function readStateMeta(meta: any): any;
+export function subscribeStateMeta(meta: any, fn: any): any;
+export function setStateValue(value: any, next: any): any;
+export function getMappedMeta(value: any): any;

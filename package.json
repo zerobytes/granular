@@ -1,0 +1,26 @@
+{
+  "name": "granular",
+  "version": "0.1.0",
+  "description": "Granular framework",
+  "type": "module",
+  "main": "./dist/granular.min.js",
+  "module": "./dist/granular.min.js",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/granular.min.js",
+      "default": "./dist/granular.min.js"
+    }
+  },
+  "files": [
+    "dist",
+    "types",
+    "src"
+  ],
+  "scripts": {
+    "build:minify": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js && npx -y -p typescript@latest tsc -p tsconfig.json",
+    "build:debug": "npx -y esbuild src/index.js --bundle --sourcemap --format=esm --outfile=./dist/granular.js && npx -y -p typescript@latest tsc -p tsconfig.json",
+    "build:watch": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js --watch"
+  }
+}
