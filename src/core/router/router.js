@@ -649,10 +649,6 @@ export class Router {
   }
 
   async #swapPage(PageClass, ctx, transition) {
-    const view = document.createElement('div');
-    view.dataset.zbRouteView = ctx.route.id;
-    view.classList.add('zb-route-view');
-
     const props = {
       params: ctx.params,
       query: ctx.query,
@@ -681,26 +677,25 @@ export class Router {
     }
 
     page.emitBefore?.('routeEnter', ctx, { router: this, page });
-    this.#mountEnd.parentNode.insertBefore(view, this.#mountEnd);
+    
     const rootRenderable = this.#buildLayoutTree(page, ctx);
     const mountedValues = Renderer.normalize(rootRenderable);
     for (const r of mountedValues) {
       if (Renderer.isRenderable(r)) {
-        r.mountInto(view, null);
+        r.mountInto(this.#mountParent, this.#mountEnd);
       } else if (Renderer.isDomNode(r)) {
-        view.appendChild(r);
+        this.#mountEnd.parentNode.insertBefore(r, this.#mountEnd);
       }
     }
+    
     page.emitAfter?.('routeEnter', ctx, { router: this, page });
 
-    await this.#applyTransition(prev?.view || null, view, transition);
     if (prev) this.#teardownCurrent();
 
     this.#current = {
       route: ctx.route,
       chain: ctx.chain,
       page,
-      view,
       mounted: mountedValues,
       params: ctx.params,
       query: ctx.query,
@@ -758,7 +753,6 @@ export class Router {
     if (Array.isArray(current.mounted)) {
       for (const r of current.mounted) Renderer.unmount(r);
     }
-    current.view?.remove?.();
   }
 
   #buildLayoutTree(page, ctx) {

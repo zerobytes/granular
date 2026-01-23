@@ -1,1 +1,1 @@
-export function resolve<T = unknown>(value: T): T;
+export function resolve(value: any): any;

@@ -1,5 +1,7 @@
 export { bootstrap } from "./bootstrap.js";
 export { component } from "./component/function-component.js";
+export { resolve } from "./reactivity/resolve.js";
+export { computed } from "./reactivity/computed.js";
 export { persist } from "./reactivity/persist.js";
 export { form } from "./forms/form.js";
 export { list } from "./dom/list.js";
@@ -17,8 +19,6 @@ export * from "./dom/tags.js";
 export { signal, isSignal, setSignal, readSignal } from "./reactivity/signal.js";
 export { state, isState, isStatePath, isComputed } from "./reactivity/state.js";
 export { after, before, set, subscribe } from "./reactivity/observe.js";
-export { resolve } from "./reactivity/resolve.js";
-export { computed } from "./reactivity/computed.js";
 export { WebSocketClient, createWebSocket } from "./network/websocket.js";
 export { renderToString, hydrate } from "./renderable/render-string.js";
 export { Router, createRouter, router } from "./router/router.js";

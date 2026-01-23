@@ -1,1 +1,1 @@
-export function computed<T = unknown>(value: T): T;
+export function computed(input: any): any;
