@@ -5,7 +5,8 @@ No template DSL, no VDOM, no magic compile step — just explicit reactivity and
 
 If your UI should be fast **and** your code should still look like code, this is for you.
 
-<img width="992" height="714" alt="image" src="https://github.com/user-attachments/assets/f5a5f27d-a71a-4a7c-b850-c78cbee0cbfb" />
+<img width="1018" height="494" alt="image" src="https://github.com/user-attachments/assets/9080dde0-c3b8-43e4-a1b2-88c05238ea6f" />
+
 
 
 ## The Pitch
