@@ -25,6 +25,42 @@ function getAtPath(obj, path) {
   return cur;
 }
 
+function mergeDefaults(base, next) {
+  if (!isObject(base) || !isObject(next)) return isObject(next) ? { ...next } : next;
+  const out = { ...base };
+  for (const key of Object.keys(next)) {
+    const baseValue = base[key];
+    const nextValue = next[key];
+    if (isObject(baseValue) && isObject(nextValue)) {
+      out[key] = mergeDefaults(baseValue, nextValue);
+      continue;
+    }
+    out[key] = nextValue;
+  }
+  return out;
+}
+
+function normalizeWhen(when) {
+  if (typeof when === 'function') return when;
+  if (when === 'nullish') return (value) => value == null;
+  return (value) => value === undefined;
+}
+
+function resolveValue(adapter, path, root) {
+  const currentRoot = root ?? adapter.get();
+  const value = getAtPath(currentRoot, path);
+  const defaults = adapter.defaults;
+  if (!defaults) return value;
+  const shouldDefault = adapter.defaultsWhen(value);
+  if (!shouldDefault) return value;
+  const fallback = getAtPath(defaults, path);
+  if (fallback === undefined) return value;
+  if (typeof fallback === 'function') {
+    return fallback({ value, path, root: currentRoot });
+  }
+  return fallback;
+}
+
 function setAtPath(obj, path, value) {
   if (!path.length) return value;
   const root = Array.isArray(obj) ? obj.slice() : { ...(obj || {}) };
@@ -87,7 +123,7 @@ function createStateProxy(adapter, path = []) {
         if (prop === 'get') {
           return (p) => {
             if (p === undefined) return adapter.get();
-            return getAtPath(adapter.get(), path.concat(splitPath(p)));
+            return resolveValue(adapter, path.concat(splitPath(p)));
           };
         }
         if (prop === 'set') {
@@ -112,11 +148,11 @@ function createStateProxy(adapter, path = []) {
         if (prop === 'mutate') {
           return (...args) => adapter.mutate?.(...args);
         }
-        if (prop === Symbol.toPrimitive) return () => getAtPath(adapter.get(), path);
-        if (prop === 'valueOf') return () => getAtPath(adapter.get(), path);
-        if (prop === 'toString') return () => String(getAtPath(adapter.get(), path));
+        if (prop === Symbol.toPrimitive) return () => resolveValue(adapter, path);
+        if (prop === 'valueOf') return () => resolveValue(adapter, path);
+        if (prop === 'toString') return () => String(resolveValue(adapter, path));
 
-        const current = getAtPath(adapter.get(), path);
+        const current = resolveValue(adapter, path);
         if (Array.isArray(current) && prop === 'map') {
           return (fn) => {
             const out = current.map(fn);
@@ -199,21 +235,21 @@ export function isStatePath(value) {
 export function readState(value) {
   const meta = value?.[STATE_META];
   if (!meta) return undefined;
-  return getAtPath(meta.adapter.get(), meta.path);
+  return resolveValue(meta.adapter, meta.path);
 }
 
 export function readStateFromRoot(value, root) {
   const meta = value?.[STATE_META];
   if (!meta) return undefined;
-  return getAtPath(root, meta.path);
+  return resolveValue(meta.adapter, meta.path, root);
 }
 
 export function subscribeState(value, fn) {
   const meta = value?.[STATE_META];
   if (!meta) return null;
   return meta.adapter.subscribe((nextRoot, prevRoot) => {
-    const next = getAtPath(nextRoot, meta.path);
-    const prev = getAtPath(prevRoot, meta.path);
+    const next = resolveValue(meta.adapter, meta.path, nextRoot);
+    const prev = resolveValue(meta.adapter, meta.path, prevRoot);
     if (next === prev) return;
     fn(next, prev);
   });
@@ -221,14 +257,14 @@ export function subscribeState(value, fn) {
 
 export function readStateMeta(meta) {
   if (!meta) return undefined;
-  return getAtPath(meta.adapter.get(), meta.path);
+  return resolveValue(meta.adapter, meta.path);
 }
 
 export function subscribeStateMeta(meta, fn) {
   if (!meta) return null;
   return meta.adapter.subscribe((nextRoot, prevRoot) => {
-    const next = getAtPath(nextRoot, meta.path);
-    const prev = getAtPath(prevRoot, meta.path);
+    const next = resolveValue(meta.adapter, meta.path, nextRoot);
+    const prev = resolveValue(meta.adapter, meta.path, prevRoot);
     if (next === prev) return;
     fn(next, prev);
   });
@@ -244,4 +280,15 @@ export function getMappedMeta(value) {
   const meta = value?.[STATE_META];
   if (!meta || !meta.mapFn) return null;
   return meta;
+}
+
+export function withDefaults(target, defaults, options = {}) {
+  const meta = target?.[STATE_META];
+  if (!meta) {
+    throw new Error('withDefaults(target, defaults, options?): target must be a state or state path');
+  }
+  const adapter = meta.adapter;
+  adapter.defaultsWhen = options.when === undefined ? (adapter.defaultsWhen ?? normalizeWhen()) : normalizeWhen(options.when);
+  adapter.defaults = adapter.defaults ? mergeDefaults(adapter.defaults, defaults) : defaults;
+  return target;
 }
