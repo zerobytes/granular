@@ -5,7 +5,7 @@ No template DSL, no VDOM, no magic compile step — just explicit reactivity and
 
 If your UI should be fast **and** your code should still look like code, this is for you.
 
-<img width="938" height="361" alt="image" src="https://github.com/user-attachments/assets/774acd00-f11b-4aa8-b502-af90fc3a8436" />
+[<img width="938" height="361" alt="image" src="https://github.com/user-attachments/assets/774acd00-f11b-4aa8-b502-af90fc3a8436" />](http://granular.web.app/)
 
 
 [<img width="153" height="47" alt="image" src="https://github.com/user-attachments/assets/06b38444-4e19-4011-ad2e-95de98d291fd" />](https://granular.web.app/#/docs/granular/quick-start)
