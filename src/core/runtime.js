@@ -5,6 +5,7 @@ export { state, isState, isStatePath, isComputed } from './reactivity/state.js';
 export { after, before, set, subscribe } from './reactivity/observe.js';
 export { resolve } from './reactivity/resolve.js';
 export { computed } from './reactivity/computed.js';
+export { concat } from './reactivity/concat.js';
 export { persist } from './reactivity/persist.js';
 export { form } from './forms/form.js';
 export { list } from './dom/list.js';

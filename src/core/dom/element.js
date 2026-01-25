@@ -2,6 +2,7 @@ import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { isObservableArray } from '../collections/observable-array.js';
 import { createComment, clearBetween } from './dom.js';
+import { isWhen, readWhenValue, subscribeWhenValue } from './when.js';
 import { isSignal, readSignal, subscribeSignal, getMappedArrayMeta } from '../reactivity/signal.js';
 import { isState, isStatePath, readState, subscribeState, getMappedMeta, readStateMeta, subscribeStateMeta } from '../reactivity/state.js';
 import { list } from './list.js';
@@ -72,6 +73,7 @@ export class ElementNode extends Renderable {
       if (key === 'children' || key === 'content') continue;
       if (key.startsWith('on') && typeof rawValue === 'function') continue;
       let value = rawValue;
+      if (isWhen(value)) value = readWhenValue(value);
       if (isSignal(value)) value = readSignal(value);
       if (isState(value) || isStatePath(value)) value = readState(value);
 
@@ -143,6 +145,13 @@ export class ElementNode extends Renderable {
         this.#applyStyle(el, rawValue);
         continue;
       }
+      if (isWhen(rawValue)) {
+        const update = () => this.#setProp(el, key, readWhenValue(rawValue));
+        update();
+        const unsub = subscribeWhenValue(rawValue, update);
+        if (unsub) this.#unsubs.push(unsub);
+        continue;
+      }
       if (isSignal(rawValue)) {
         const update = () => this.#setProp(el, key, readSignal(rawValue));
         update();
@@ -202,6 +211,7 @@ export class ElementNode extends Renderable {
   }
 
   #setProp(el, key, value) {
+    if (isWhen(value)) value = readWhenValue(value);
     if (isSignal(value)) value = readSignal(value);
     if (isState(value) || isStatePath(value)) value = readState(value);
     if (key === 'style') {

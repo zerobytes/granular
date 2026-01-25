@@ -4,6 +4,16 @@ import { createComment, clearBetween } from './dom.js';
 import { isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
 import { isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
 
+const WHEN = Symbol('zb.when');
+
+function isValidAttributeValue(value) {
+  if (value == null) return true;
+  const type = typeof value;
+  if (type === 'string' || type === 'number' || type === 'boolean') return true;
+  if (type === 'object' && !Array.isArray(value)) return true;
+  return false;
+}
+
 export class WhenNode extends Renderable {
   #source;
   #renderTrue;
@@ -19,6 +29,7 @@ export class WhenNode extends Renderable {
     this.#source = source;
     this.#renderTrue = renderTrue;
     this.#renderFalse = renderFalse;
+    Object.defineProperty(this, WHEN, { value: true });
   }
 
   mountInto(parent, beforeNode) {
@@ -64,6 +75,24 @@ export class WhenNode extends Renderable {
     return !!this.#source;
   }
 
+  readValue() {
+    const predicate = this.#read();
+    const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
+    if (Renderer.isRenderable(value) || Renderer.isDomNode(value)) return undefined;
+    if (!isValidAttributeValue(value)) return undefined;
+    return value;
+  }
+
+  subscribeValue(fn) {
+    if (isState(this.#source) || isStatePath(this.#source)) {
+      return subscribeState(this.#source, () => fn(this.readValue()));
+    }
+    if (isSignal(this.#source)) {
+      return subscribeSignal(this.#source, () => fn(this.readValue()));
+    }
+    return null;
+  }
+
   #cleanup() {
     for (const r of this.#mountedValues) Renderer.unmount(r);
     this.#mountedValues = [];
@@ -94,4 +123,16 @@ export class WhenNode extends Renderable {
 
 export function when(source, renderTrue, renderFalse) {
   return new WhenNode(source, renderTrue, renderFalse);
+}
+
+export function isWhen(value) {
+  return !!value && value[WHEN] === true;
+}
+
+export function readWhenValue(value) {
+  return value?.readValue?.();
+}
+
+export function subscribeWhenValue(value, fn) {
+  return value?.subscribeValue?.(fn);
 }

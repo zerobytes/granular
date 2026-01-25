@@ -14,6 +14,7 @@ export {
   set,
   resolve,
   computed,
+  concat,
   subscribe,
   persist,
   form,

@@ -1,10 +1,29 @@
 import { after } from './observe.js';
-import { isSignal } from './signal.js';
-import { isState, isStatePath, isComputed, state } from './state.js';
+import { isSignal, readSignal } from './signal.js';
+import { isState, isStatePath, isComputed, readState, state } from './state.js';
 
 function asComputed(value) {
   if (isComputed(value)) return value;
-  if (isSignal(value) || isState(value) || isStatePath(value)) {
+  if (isSignal(value)) {
+    const current = readSignal(value);
+    if (typeof current === 'function') {
+      return (...args) => {
+        const next = readSignal(value);
+        if (typeof next === 'function') return next(...args);
+        return undefined;
+      };
+    }
+    return after(value).compute((next) => next);
+  }
+  if (isState(value) || isStatePath(value)) {
+    const current = readState(value);
+    if (typeof current === 'function') {
+      return (...args) => {
+        const next = readState(value);
+        if (typeof next === 'function') return next(...args);
+        return undefined;
+      };
+    }
     return after(value).compute((next) => next);
   }
   if (typeof value === 'function') return value;

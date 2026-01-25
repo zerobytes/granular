@@ -27,6 +27,7 @@ Public exports (via `src/core/runtime.js`):
 - `bootstrap`
 - `component`
 - `signal`, `state`, `after`, `before`, `set`, `persist`, `subscribe`
+- `concat`
 - `form`
 - `Renderable`
 - `Renderer`
@@ -56,6 +57,7 @@ Module: `src/core/dom/element.js`
 - `ElementNode` implements renderable DOM nodes.
 - Uses DirtyHost bindings to update attributes and children directly.
 - Lists use observable array patches for incremental updates.
+- Attribute values accept `when(...)` and resolve to primitives/objects only.
 
 ## Renderable Contract
 
@@ -161,6 +163,7 @@ Module: `src/core/reactivity/state.js` and `src/core/reactivity/observe.js`
 - `compute(fn, options)` supports debounce, hash, equals, onError.
 - `set(x, value)` updates state or observable arrays.
 - `persist(state, options)` hydrates and saves to storage.
+- `concat(...parts, options)` joins primitives and reactive values into a single string.
 
 ## Stores
 
