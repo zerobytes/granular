@@ -2,6 +2,7 @@ import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { isObservableArray } from '../collections/observable-array.js';
 import { createComment, clearBetween } from './dom.js';
+import { normalizeInputFormat, applyInputFormat } from './input-format.js';
 import { isWhen, readWhenValue, subscribeWhenValue } from './when.js';
 import { isSignal, readSignal, subscribeSignal, getMappedArrayMeta } from '../reactivity/signal.js';
 import { isState, isStatePath, readState, subscribeState, getMappedMeta, readStateMeta, subscribeStateMeta } from '../reactivity/state.js';
@@ -71,6 +72,7 @@ export class ElementNode extends Renderable {
 
     for (const [key, rawValue] of Object.entries(props)) {
       if (key === 'children' || key === 'content') continue;
+      if (key === 'format') continue;
       if (key.startsWith('on') && typeof rawValue === 'function') continue;
       let value = rawValue;
       if (isWhen(value)) value = readWhenValue(value);
@@ -98,6 +100,20 @@ export class ElementNode extends Renderable {
       if (key === 'htmlFor') {
         if (value != null && value !== false) attrParts.push(`for="${render.escape(String(value))}"`);
         continue;
+      }
+      if (key === 'value' && lower === 'input' && props.format != null) {
+        const resolvedFormat = isSignal(props.format)
+          ? readSignal(props.format)
+          : isState(props.format) || isStatePath(props.format)
+            ? readState(props.format)
+            : props.format;
+        const formatConfig = normalizeInputFormat(resolvedFormat);
+        const formatMode = formatConfig?.mode ?? 'both';
+        const formatted = applyInputFormat(value ?? '', formatConfig);
+        value =
+          formatMode === 'value-only'
+            ? (formatted.raw ?? formatted.value ?? '')
+            : (formatted.visual ?? formatted.value ?? '');
       }
       if (key === 'textContent') {
         textContent = value == null ? '' : String(value);
@@ -139,8 +155,30 @@ export class ElementNode extends Renderable {
 
   #applyProps(el) {
     const props = this.props || {};
+    const tagName = this.tagName.toLowerCase();
+    let formatBound = false;
+    const resolveFormat = (value) => {
+      if (isSignal(value)) return readSignal(value);
+      if (isState(value) || isStatePath(value)) return readState(value);
+      return value;
+    };
+    const formatConfig = tagName === 'input' ? normalizeInputFormat(resolveFormat(props.format)) : null;
+    const formatMode = formatConfig?.mode ?? 'both';
+    const formatValue = (next) => {
+      const formatted = applyInputFormat(next ?? '', formatConfig);
+      const visualValue =
+        formatMode === 'value-only'
+          ? (formatted.raw ?? formatted.value ?? '')
+          : (formatted.visual ?? formatted.value ?? '');
+      const stateValue =
+        formatMode === 'visual-only'
+          ? (formatted.raw ?? formatted.value ?? '')
+          : (formatted.value ?? formatted.visual ?? '');
+      return { formatted, visualValue, stateValue };
+    };
     for (const [key, rawValue] of Object.entries(props)) {
       if (key === 'children' || key === 'content') continue;
+      if (key === 'format') continue;
       if (key === 'style') {
         this.#applyStyle(el, rawValue);
         continue;
@@ -153,21 +191,45 @@ export class ElementNode extends Renderable {
         continue;
       }
       if (isSignal(rawValue)) {
-        const update = () => this.#setProp(el, key, readSignal(rawValue));
+        const update = () => {
+          const nextValue = readSignal(rawValue);
+          if (key === 'value' && formatConfig) {
+            const { visualValue } = formatValue(nextValue);
+            this.#setProp(el, key, visualValue);
+            return;
+          }
+          this.#setProp(el, key, nextValue);
+        };
         update();
         const unsub = subscribeSignal(rawValue, update);
         if (unsub) this.#unsubs.push(unsub);
         if (key === 'value') {
-          const onInput = (ev) => {
-            const ok = rawValue.set?.(ev.target?.value ?? '');
-            if (ok === false) update();
-          };
-          el.addEventListener('input', onInput);
-          el.addEventListener('change', onInput);
-          this.#unsubs.push(() => {
-            el.removeEventListener('input', onInput);
-            el.removeEventListener('change', onInput);
-          });
+          if (formatConfig) {
+            formatBound = true;
+            const onInput = (ev) => {
+              const { visualValue, stateValue } = formatValue(ev.target?.value ?? '');
+              if (ev.target) ev.target.value = visualValue;
+              const ok = rawValue.set?.(stateValue);
+              if (ok === false) update();
+            };
+            el.addEventListener('input', onInput, true);
+            el.addEventListener('change', onInput, true);
+            this.#unsubs.push(() => {
+              el.removeEventListener('input', onInput, true);
+              el.removeEventListener('change', onInput, true);
+            });
+          } else {
+            const onInput = (ev) => {
+              const ok = rawValue.set?.(ev.target?.value ?? '');
+              if (ok === false) update();
+            };
+            el.addEventListener('input', onInput);
+            el.addEventListener('change', onInput);
+            this.#unsubs.push(() => {
+              el.removeEventListener('input', onInput);
+              el.removeEventListener('change', onInput);
+            });
+          }
         }
         if (key === 'checked') {
           const onChange = (ev) => {
@@ -180,21 +242,45 @@ export class ElementNode extends Renderable {
         continue;
       }
       if (isState(rawValue) || isStatePath(rawValue)) {
-        const update = () => this.#setProp(el, key, readState(rawValue));
+        const update = () => {
+          const nextValue = readState(rawValue);
+          if (key === 'value' && formatConfig) {
+            const { visualValue } = formatValue(nextValue);
+            this.#setProp(el, key, visualValue);
+            return;
+          }
+          this.#setProp(el, key, nextValue);
+        };
         update();
         const unsub = subscribeState(rawValue, update);
         if (unsub) this.#unsubs.push(unsub);
         if (key === 'value') {
-          const onInput = (ev) => {
-            const ok = rawValue.set?.(ev.target?.value ?? '');
-            if (ok === false) update();
-          };
-          el.addEventListener('input', onInput);
-          el.addEventListener('change', onInput);
-          this.#unsubs.push(() => {
-            el.removeEventListener('input', onInput);
-            el.removeEventListener('change', onInput);
-          });
+          if (formatConfig) {
+            formatBound = true;
+            const onInput = (ev) => {
+              const { visualValue, stateValue } = formatValue(ev.target?.value ?? '');
+              if (ev.target) ev.target.value = visualValue;
+              const ok = rawValue.set?.(stateValue);
+              if (ok === false) update();
+            };
+            el.addEventListener('input', onInput, true);
+            el.addEventListener('change', onInput, true);
+            this.#unsubs.push(() => {
+              el.removeEventListener('input', onInput, true);
+              el.removeEventListener('change', onInput, true);
+            });
+          } else {
+            const onInput = (ev) => {
+              const ok = rawValue.set?.(ev.target?.value ?? '');
+              if (ok === false) update();
+            };
+            el.addEventListener('input', onInput);
+            el.addEventListener('change', onInput);
+            this.#unsubs.push(() => {
+              el.removeEventListener('input', onInput);
+              el.removeEventListener('change', onInput);
+            });
+          }
         }
         if (key === 'checked') {
           const onChange = (ev) => {
@@ -206,7 +292,25 @@ export class ElementNode extends Renderable {
         }
         continue;
       }
+      if (key === 'value' && formatConfig) {
+        const { visualValue } = formatValue(rawValue);
+        this.#setProp(el, key, visualValue);
+        formatBound = true;
+        continue;
+      }
       this.#setProp(el, key, rawValue);
+    }
+    if (formatConfig && !formatBound) {
+      const onInput = (ev) => {
+        const { visualValue } = formatValue(ev.target?.value ?? '');
+        if (ev.target) ev.target.value = visualValue;
+      };
+      el.addEventListener('input', onInput, true);
+      el.addEventListener('change', onInput, true);
+      this.#unsubs.push(() => {
+        el.removeEventListener('input', onInput, true);
+        el.removeEventListener('change', onInput, true);
+      });
     }
   }
 
