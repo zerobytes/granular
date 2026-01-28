@@ -71,6 +71,7 @@ export class ElementNode extends Renderable {
     let textContent = null;
 
     for (const [key, rawValue] of Object.entries(props)) {
+      if (key === 'node') continue;
       if (key === 'children' || key === 'content') continue;
       if (key === 'format') continue;
       if (key.startsWith('on') && typeof rawValue === 'function') continue;
@@ -177,6 +178,7 @@ export class ElementNode extends Renderable {
       return { formatted, visualValue, stateValue };
     };
     for (const [key, rawValue] of Object.entries(props)) {
+      if (key === 'node') continue;
       if (key === 'children' || key === 'content') continue;
       if (key === 'format') continue;
       if (key === 'style') {
@@ -300,6 +302,12 @@ export class ElementNode extends Renderable {
       }
       this.#setProp(el, key, rawValue);
     }
+
+    if (props.node && (isState(props.node) || isStatePath(props.node))) {
+      props.node.set(this.#el);
+      return;
+    }
+
     if (formatConfig && !formatBound) {
       const onInput = (ev) => {
         const { visualValue } = formatValue(ev.target?.value ?? '');

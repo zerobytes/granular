@@ -58,6 +58,15 @@ Module: `src/core/dom/element.js`
 - Uses DirtyHost bindings to update attributes and children directly.
 - Lists use observable array patches for incremental updates.
 - Attribute values accept `when(...)` and resolve to primitives/objects only.
+- `node` prop assigns the DOM element to a reactive target (`state` or `signal`).
+
+### Input Formatting
+Module: `src/core/dom/input-format.js`
+
+- `normalizeInputFormat` accepts a pattern string, regex, formatter function, or config object.
+- `applyInputFormat` returns `{ value, visual, raw }` for display and state sync.
+- `ElementNode` applies `format` on `input` elements during render and on input/change events.
+- `mode` controls whether formatting affects the displayed value, the stored value, or both.
 
 ## Renderable Contract
 

@@ -121,6 +121,19 @@ const html = renderToString(App({ data }));
 - `Elements` exposes all tag functions in a single object.
 - `Renderer.normalize()` accepts primitives, nodes, renderables, and arrays.
 
+### DOM Node Access
+Use `node` to capture the underlying DOM element into a reactive target.
+It accepts a `state` or `signal` and is set when the element mounts.
+
+Example:
+```js
+import { Div, state } from 'granular';
+
+const rootEl = state(null);
+
+Div({ node: rootEl }, 'Hello');
+```
+
 ### Function Components
 Plain functions:
 - Components are just functions that return renderables or DOM nodes.
@@ -370,6 +383,31 @@ Validators contract:
 - `string` → form error message
 - `object` → field errors merged by key
 Forms stop being a framework within the framework. This is just state, done right.
+
+### Input Formatting
+Inputs accept a `format` prop that can be a string pattern, a regex, a formatter function, or a config object.
+Formatting returns `{ value, visual, raw }` and supports `mode`:
+- `both` (default): state stores formatted value, input shows formatted visual
+- `value-only`: state stores formatted value, input shows raw
+- `visual-only`: state stores raw, input shows formatted visual
+
+Pattern tokens:
+- `d` digit
+- `a` letter
+- `*` alphanumeric
+- `s` non-alphanumeric
+
+Example:
+```js
+import { Input, state } from 'granular';
+
+const phone = state('');
+
+Input({
+  value: phone,
+  format: { pattern: '(ddd) ddd-dddd', mode: 'visual-only' },
+});
+```
 
 ### Optimistic Updates
 `state.mutate(optimistic, mutation, options?)`:
