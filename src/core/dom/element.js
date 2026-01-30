@@ -5,7 +5,7 @@ import { createComment, clearBetween } from './dom.js';
 import { normalizeInputFormat, applyInputFormat } from './input-format.js';
 import { isWhen, readWhenValue, subscribeWhenValue } from './when.js';
 import { isSignal, readSignal, subscribeSignal, getMappedArrayMeta } from '../reactivity/signal.js';
-import { isState, isStatePath, readState, subscribeState, getMappedMeta, readStateMeta, subscribeStateMeta } from '../reactivity/state.js';
+import { isState, isStatePath, isComputed, readState, subscribeState, getMappedMeta, readStateMeta, subscribeStateMeta } from '../reactivity/state.js';
 import { list } from './list.js';
 
 const voidElements = new Set([
@@ -158,26 +158,13 @@ export class ElementNode extends Renderable {
     const props = this.props || {};
     const tagName = this.tagName.toLowerCase();
     let formatBound = false;
-    const resolveFormat = (value) => {
-      if (isSignal(value)) return readSignal(value);
-      if (isState(value) || isStatePath(value)) return readState(value);
-      return value;
-    };
-    const formatConfig = tagName === 'input' ? normalizeInputFormat(resolveFormat(props.format)) : null;
-    const formatMode = formatConfig?.mode ?? 'both';
-    const formatValue = (next) => {
-      const formatted = applyInputFormat(next ?? '', formatConfig);
-      const visualValue =
-        formatMode === 'value-only'
-          ? (formatted.raw ?? formatted.value ?? '')
-          : (formatted.visual ?? formatted.value ?? '');
-      const stateValue =
-        formatMode === 'visual-only'
-          ? (formatted.raw ?? formatted.value ?? '')
-          : (formatted.value ?? formatted.visual ?? '');
-      return { formatted, visualValue, stateValue };
-    };
+    let valueBound = false;
+
+    const { formatConfig } = this.#getFormatConfig();
+
     for (const [key, rawValue] of Object.entries(props)) {
+      if (key === 'value') valueBound = true;
+
       if (key === 'node') continue;
       if (key === 'children' || key === 'content') continue;
       if (key === 'format') continue;
@@ -185,140 +172,187 @@ export class ElementNode extends Renderable {
         this.#applyStyle(el, rawValue);
         continue;
       }
+      const props = { el, key, rawValue, formatConfig };
       if (isWhen(rawValue)) {
-        const update = () => this.#setProp(el, key, readWhenValue(rawValue));
-        update();
-        const unsub = subscribeWhenValue(rawValue, update);
-        if (unsub) this.#unsubs.push(unsub);
+        this.#applyPropAsWhen(props);
         continue;
       }
       if (isSignal(rawValue)) {
-        const update = () => {
-          const nextValue = readSignal(rawValue);
-          if (key === 'value' && formatConfig) {
-            const { visualValue } = formatValue(nextValue);
-            this.#setProp(el, key, visualValue);
-            return;
-          }
-          this.#setProp(el, key, nextValue);
-        };
-        update();
-        const unsub = subscribeSignal(rawValue, update);
-        if (unsub) this.#unsubs.push(unsub);
-        if (key === 'value') {
-          if (formatConfig) {
-            formatBound = true;
-            const onInput = (ev) => {
-              const { visualValue, stateValue } = formatValue(ev.target?.value ?? '');
-              if (ev.target) ev.target.value = visualValue;
-              const ok = rawValue.set?.(stateValue);
-              if (ok === false) update();
-            };
-            el.addEventListener('input', onInput, true);
-            el.addEventListener('change', onInput, true);
-            this.#unsubs.push(() => {
-              el.removeEventListener('input', onInput, true);
-              el.removeEventListener('change', onInput, true);
-            });
-          } else {
-            const onInput = (ev) => {
-              const ok = rawValue.set?.(ev.target?.value ?? '');
-              if (ok === false) update();
-            };
-            el.addEventListener('input', onInput);
-            el.addEventListener('change', onInput);
-            this.#unsubs.push(() => {
-              el.removeEventListener('input', onInput);
-              el.removeEventListener('change', onInput);
-            });
-          }
-        }
-        if (key === 'checked') {
-          const onChange = (ev) => {
-            const ok = rawValue.set?.(!!ev.target?.checked);
-            if (ok === false) update();
-          };
-          el.addEventListener('change', onChange);
-          this.#unsubs.push(() => el.removeEventListener('change', onChange));
-        }
+        if (key === 'value' && formatConfig) formatBound = true;
+        this.#applyPropAsSignal(props);
         continue;
       }
       if (isState(rawValue) || isStatePath(rawValue)) {
-        const update = () => {
-          const nextValue = readState(rawValue);
-          if (key === 'value' && formatConfig) {
-            const { visualValue } = formatValue(nextValue);
-            this.#setProp(el, key, visualValue);
-            return;
-          }
-          this.#setProp(el, key, nextValue);
-        };
-        update();
-        const unsub = subscribeState(rawValue, update);
-        if (unsub) this.#unsubs.push(unsub);
-        if (key === 'value') {
-          if (formatConfig) {
-            formatBound = true;
-            const onInput = (ev) => {
-              const { visualValue, stateValue } = formatValue(ev.target?.value ?? '');
-              if (ev.target) ev.target.value = visualValue;
-              const ok = rawValue.set?.(stateValue);
-              if (ok === false) update();
-            };
-            el.addEventListener('input', onInput, true);
-            el.addEventListener('change', onInput, true);
-            this.#unsubs.push(() => {
-              el.removeEventListener('input', onInput, true);
-              el.removeEventListener('change', onInput, true);
-            });
-          } else {
-            const onInput = (ev) => {
-              const ok = rawValue.set?.(ev.target?.value ?? '');
-              if (ok === false) update();
-            };
-            el.addEventListener('input', onInput);
-            el.addEventListener('change', onInput);
-            this.#unsubs.push(() => {
-              el.removeEventListener('input', onInput);
-              el.removeEventListener('change', onInput);
-            });
-          }
-        }
-        if (key === 'checked') {
-          const onChange = (ev) => {
-            const ok = rawValue.set?.(!!ev.target?.checked);
-            if (ok === false) update();
-          };
-          el.addEventListener('change', onChange);
-          this.#unsubs.push(() => el.removeEventListener('change', onChange));
-        }
+        if (key === 'value' && formatConfig) formatBound = true;
+        this.#applyPropAsState(props)
         continue;
       }
       if (key === 'value' && formatConfig) {
-        const { visualValue } = formatValue(rawValue);
+        const { visualValue } = this.#formatValue(rawValue);
         this.#setProp(el, key, visualValue);
         formatBound = true;
+        continue;
+      }
+      if ((key === 'onInput' || key === 'onChange') && typeof rawValue === 'function' && formatConfig) {
+        const handler = (ev) => {
+          rawValue?.(ev, ev?.target?.rawValue);
+        };
+        this.#setProp(el, key, handler);
+        continue;
+      }
+      if (key === 'onInput' && !formatBound) {
+        const onInput = (ev) => {
+          if (formatConfig) {
+            this.#applyPropsBaseOnInputFormatted(ev);
+          }
+          rawValue?.(ev);
+        };
+        this.#setProp(el, key, onInput);
         continue;
       }
       this.#setProp(el, key, rawValue);
     }
 
+    if (!valueBound && formatConfig) {
+      const onInput = (ev) => {
+        const { visualValue } = this.#applyPropsBaseOnInputFormatted({ target: el });
+        this.#setProp(el, 'value', visualValue);
+      }
+      onInput()
+      this.#applyPropsAddInputEventListeners(el, onInput, true);
+      formatBound = true;
+    }
+
     if (props.node && (isState(props.node) || isStatePath(props.node))) {
       props.node.set(this.#el);
-      return;
     }
 
     if (formatConfig && !formatBound) {
       const onInput = (ev) => {
-        const { visualValue } = formatValue(ev.target?.value ?? '');
-        if (ev.target) ev.target.value = visualValue;
+        this.#applyPropsBaseOnInputFormatted(ev);
       };
-      el.addEventListener('input', onInput, true);
-      el.addEventListener('change', onInput, true);
-      this.#unsubs.push(() => {
-        el.removeEventListener('input', onInput, true);
-        el.removeEventListener('change', onInput, true);
-      });
+      this.#applyPropsAddInputEventListeners(el, onInput, true);
+    }
+  }
+  #getFormatConfig() {
+    const props = this.props || {};
+    const tagName = this.tagName.toLowerCase();
+    const resolveFormat = (value) => {
+      if (isSignal(value)) return readSignal(value);
+      if (isState(value) || isStatePath(value)) return readState(value);
+      return value;
+    };
+    const formatConfig = tagName === 'input' ? normalizeInputFormat(resolveFormat(props.format)) : null;
+    const formatMode = formatConfig?.mode ?? 'both';
+    return { formatConfig, formatMode };
+  }
+  #formatValue(next) {
+    const { formatConfig, formatMode } = this.#getFormatConfig();
+    const formatted = applyInputFormat(next ?? '', formatConfig);
+    const visualValue =
+      formatMode === 'value-only'
+        ? (formatted.raw ?? formatted.value ?? '')
+        : (formatted.visual ?? formatted.value ?? '');
+    const stateValue =
+      formatMode === 'visual-only'
+        ? (formatted.raw ?? formatted.value ?? '')
+        : (formatted.value ?? formatted.visual ?? '');
+    return { formatted, visualValue, stateValue };
+  };
+
+  #applyPropsBaseOnInputFormatted(ev) {
+    const { formatted, visualValue, stateValue } = this.#formatValue(ev.target.value ?? '');
+    const rawValue = formatted?.raw ?? stateValue;
+    ev.target.value = visualValue;
+    ev.target.rawValue = rawValue;
+    return { visualValue, stateValue, rawValue };
+  }
+  #applyPropsAddInputEventListeners(el, onInput, capture) {
+    el.addEventListener('input', onInput, capture);
+    el.addEventListener('change', onInput, capture);
+    this.#unsubs.push(() => {
+      el.removeEventListener('input', onInput, capture);
+      el.removeEventListener('change', onInput, capture);
+    });
+  }
+
+  #applyPropsSubscribeUpdate({ key, el, rawValue, read, subscribe, formatConfig }) {
+    const update = () => {
+      const nextValue = read(rawValue);
+      if (key === 'value' && formatConfig) {
+        const { visualValue } = this.#formatValue(nextValue);
+        this.#setProp(el, key, visualValue);
+        return;
+      }
+      this.#setProp(el, key, nextValue);
+    };
+    update();
+    const unsub = subscribe(rawValue, update);
+    if (unsub) this.#unsubs.push(unsub);
+    return update;
+  }
+
+  #applyPropAsWhen(props) {
+    this.#applyPropsSubscribeUpdate({ ...props, read: readWhenValue, subscribe: subscribeWhenValue });
+  }
+  #applyPropAsSignal({ el, key, rawValue, formatConfig }) {
+    const update = this.#applyPropsSubscribeUpdate({ key, el, rawValue, formatConfig, read: readSignal, subscribe: subscribeSignal });
+    if (key === 'value') {
+      if (formatConfig) {
+        const onInput = (ev) => {
+          const { stateValue } = this.#applyPropsBaseOnInputFormatted(ev);
+          if (isComputed(rawValue)) return;
+          const ok = rawValue.set?.(stateValue);
+          if (ok === false) update();
+        };
+        this.#applyPropsAddInputEventListeners(el, onInput, true);
+      } else {
+        const onInput = (ev) => {
+          if (isComputed(rawValue)) return;
+          const ok = rawValue.set?.(ev.target?.value ?? '');
+          if (ok === false) update();
+        };
+        this.#applyPropsAddInputEventListeners(el, onInput);
+      }
+    }
+    if (key === 'checked') {
+      const onChange = (ev) => {
+        if (isComputed(rawValue)) return;
+        const ok = rawValue.set?.(!!ev.target?.checked);
+        if (ok === false) update();
+      };
+      el.addEventListener('change', onChange);
+      this.#unsubs.push(() => el.removeEventListener('change', onChange));
+    }
+  }
+  #applyPropAsState({ el, key, rawValue, formatConfig }) {
+    const update = this.#applyPropsSubscribeUpdate({ key, el, rawValue, formatConfig, read: readState, subscribe: subscribeState });
+    if (key === 'value') {
+      if (formatConfig) {
+        const onInput = (ev) => {
+          const { stateValue } = this.#applyPropsBaseOnInputFormatted(ev);
+          if (isComputed(rawValue)) return;
+          const ok = rawValue.set?.(stateValue);
+          if (ok === false) update();
+        };
+        this.#applyPropsAddInputEventListeners(el, onInput, true);
+      } else {
+        const onInput = (ev) => {
+          if (isComputed(rawValue)) return;
+          const ok = rawValue.set?.(ev.target?.value ?? '');
+          if (ok === false) update();
+        };
+        this.#applyPropsAddInputEventListeners(el, onInput);
+      }
+    }
+    if (key === 'checked') {
+      const onChange = (ev) => {
+        if (isComputed(rawValue)) return;
+        const ok = rawValue.set?.(!!ev.target?.checked);
+        if (ok === false) update();
+      };
+      el.addEventListener('change', onChange);
+      this.#unsubs.push(() => el.removeEventListener('change', onChange));
     }
   }
 
@@ -353,19 +387,19 @@ export class ElementNode extends Renderable {
     if (key === 'value') {
       try {
         el.value = value ?? '';
-      } catch {}
+      } catch { }
       return;
     }
     if (key === 'checked') {
       try {
         el.checked = !!value;
-      } catch {}
+      } catch { }
       return;
     }
     if (key === 'contentEditable') {
       try {
         el.contentEditable = value ? 'true' : 'false';
-      } catch {}
+      } catch { }
       return;
     }
     if (key === 'textContent') {
@@ -381,7 +415,7 @@ export class ElementNode extends Renderable {
       if (key in el) {
         try {
           el[key] = false;
-        } catch {}
+        } catch { }
       }
       return;
     }
@@ -390,7 +424,7 @@ export class ElementNode extends Renderable {
       if (key in el) {
         try {
           el[key] = true;
-        } catch {}
+        } catch { }
       }
       return;
     }
@@ -398,7 +432,7 @@ export class ElementNode extends Renderable {
     if (key in el) {
       try {
         el[key] = value;
-      } catch {}
+      } catch { }
     }
   }
 
