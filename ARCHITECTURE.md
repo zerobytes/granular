@@ -230,6 +230,16 @@ Routing flow:
 5. Instantiate Page
 6. Mount + transitions
 
+### Reactive Guards
+- `router.checkGuards()` revalidates guards for the current route.
+- Returns `Promise<boolean>` indicating if all guards passed.
+- Combine with `after(state).change()` to react to state changes:
+  ```js
+  after(authState).change(() => router.checkGuards())
+  ```
+- If a guard returns a redirect string, the redirect is executed automatically.
+- The context receives `source: 'revalidate'` to distinguish from navigation.
+
 Router emits route events directly on Page via `before/after`.
 
 ## Build and Packaging

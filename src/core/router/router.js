@@ -360,6 +360,24 @@ export class Router {
     return this.#current;
   }
 
+  async checkGuards() {
+    if (!this.#current) return true;
+
+    const ctx = {
+      router: this,
+      route: this.#current.route,
+      chain: this.#current.chain,
+      params: this.#current.params,
+      query: this.#current.query,
+      location: this.#current.location,
+      state: this.#current.location?.state ?? null,
+      source: 'revalidate',
+    };
+
+    const redirectChain = new Set();
+    return this.#runGuards(this.#current.chain, ctx, redirectChain);
+  }
+
   queryParameters(options = {}) {
     const replace = options.replace ?? true;
     const preserveHash = options.preserveHash ?? true;

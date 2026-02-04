@@ -50,6 +50,7 @@ export class Router {
         };
     };
     get current(): any;
+    checkGuards(): Promise<boolean>;
     queryParameters(options?: {}): {};
     #private;
 }
