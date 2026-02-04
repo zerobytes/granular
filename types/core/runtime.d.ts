@@ -2,6 +2,7 @@ export { bootstrap } from "./bootstrap.js";
 export { component } from "./component/function-component.js";
 export { resolve } from "./reactivity/resolve.js";
 export { computed } from "./reactivity/computed.js";
+export { concat } from "./reactivity/concat.js";
 export { persist } from "./reactivity/persist.js";
 export { form } from "./forms/form.js";
 export { list } from "./dom/list.js";

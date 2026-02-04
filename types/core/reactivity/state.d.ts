@@ -11,3 +11,4 @@ export function readStateMeta(meta: any): any;
 export function subscribeStateMeta(meta: any, fn: any): any;
 export function setStateValue(value: any, next: any): any;
 export function getMappedMeta(value: any): any;
+export function withDefaults(target: any, defaults: any, options?: {}): any;
