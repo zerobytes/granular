@@ -375,7 +375,8 @@ export class Router {
     };
 
     const redirectChain = new Set();
-    return this.#runGuards(this.#current.chain, ctx, redirectChain);
+    const ok = await this.#runGuards(this.#current.chain, ctx, redirectChain);
+    return ok;
   }
 
   queryParameters(options = {}) {
