@@ -30,8 +30,7 @@ function toFactoryName(tag) {
 }
 
 function createTag(tagName) {
-  return (props, ...children) => {
-    const args = [props, ...children];
+  return (...args) => {
     const nextProps = {};
     const nextChildren = [];
 
