@@ -2,8 +2,8 @@ import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { isObservableArray } from '../collections/observable-array.js';
 import { createComment, clearBetween } from './dom.js';
-import { isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
-import { isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
+import { signal, setSignal, isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
+import { state, isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
 
 export class ListNode extends Renderable {
   #items;
@@ -50,7 +50,11 @@ export class ListNode extends Renderable {
 
   renderToString(render) {
     const items = this.#readItems();
-    return items.map((item, index) => render(this.#renderItem(item, index))).join('');
+    return items.map((item, index) => {
+      const itemState = state(item);
+      const indexSignal = signal(index);
+      return render(this.#renderItem(itemState, indexSignal));
+    }).join('');
   }
 
   #readItems() {
@@ -72,10 +76,12 @@ export class ListNode extends Renderable {
           for (let i = 0; i < patch.items.length; i++) {
             this.#insert(patch.index + i, patch.items[i]);
           }
+          this.#updateIndices(patch.index + patch.items.length);
           return;
         }
         if (patch.type === 'remove') {
           this.#remove(patch.index, patch.count);
+          this.#updateIndices(patch.index);
           return;
         }
         if (patch.type === 'set') {
@@ -128,10 +134,12 @@ export class ListNode extends Renderable {
     const parent = this.#end.parentNode;
     parent.insertBefore(itemStart, refNode);
     parent.insertBefore(itemEnd, refNode);
-    const rendered = this.#renderItem ? this.#renderItem(item, index) : item;
+    const itemState = state(item);
+    const indexSignal = signal(index);
+    const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
     const values = Renderer.normalize(rendered);
     for (const r of values) this.#mountRenderable(parent, r, itemEnd);
-    this.#itemRefs.splice(index, 0, { start: itemStart, end: itemEnd, values });
+    this.#itemRefs.splice(index, 0, { start: itemStart, end: itemEnd, values, state: itemState, index: indexSignal });
   }
 
   #remove(index, count) {
@@ -145,8 +153,20 @@ export class ListNode extends Renderable {
   }
 
   #set(index, item) {
+    const ref = this.#itemRefs[index];
+    if (ref && ref.state) {
+      ref.state.set(item);
+      return;
+    }
     this.#remove(index, 1);
     this.#insert(index, item);
+  }
+
+  #updateIndices(fromIndex) {
+    for (let i = fromIndex; i < this.#itemRefs.length; i++) {
+      const ref = this.#itemRefs[i];
+      if (ref.index) setSignal(ref.index, i);
+    }
   }
 
   #mountRenderable(parent, renderable, beforeNode) {

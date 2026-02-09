@@ -12,7 +12,7 @@ function freezeValue(value) {
 }
 
 function normalizeTargets(targets) {
-  if (targets.length === 1 && Array.isArray(targets[0])) return targets[0];
+  if (targets.length === 1 && Array.isArray(targets[0]) && !isObservableArray(targets[0])) return targets[0];
   return targets;
 }
 

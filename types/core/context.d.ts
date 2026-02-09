@@ -2,10 +2,9 @@
  * Creates a context for sharing reactive state across a component tree
  * without prop drilling.
  *
- * Returns { serve, get, set }:
+ * Returns { serve, state }:
  * - serve(renderable, value?) — wraps a renderable as a context provider.
- * - get() — returns a reactive state bound to the nearest ancestor provider.
- * - set(value) — shortcut to update pending consumers' value.
+ * - state() — returns a reactive state bound to the nearest ancestor provider.
  *
  * Usage:
  *   const sizeCtx = context([1, 2, 3]);
@@ -14,7 +13,8 @@
  *     sizeCtx.serve(Div(...children));
  *
  *   const Child = () => {
- *     const sizes = sizeCtx.get();
+ *     const sizes = sizeCtx.state();
+ *     sizes.set([4, 5, 6]);
  *     return Div(sizes[0]);
  *   };
  *
@@ -22,8 +22,7 @@
  */
 export function context(defaultValue: any): {
     serve: (renderable: any, value: any) => ContextProvider;
-    get: () => {};
-    set: (value: any) => void;
+    state: () => {};
 };
 declare class ContextProvider extends Renderable {
     constructor(child: any, providerSignal: any, consumers: any);
