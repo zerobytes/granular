@@ -6,13 +6,16 @@ class ContextProvider extends Renderable {
   #child;
   #providerSignal;
   #consumers;
+  #mountStack;
+  #mountTimeConsumers = [];
   #mounted = false;
 
-  constructor(child, providerSignal, consumers) {
+  constructor(child, providerSignal, consumers, mountStack) {
     super();
     this.#child = child;
     this.#providerSignal = providerSignal;
     this.#consumers = consumers;
+    this.#mountStack = mountStack;
   }
 
   mountInto(parent, beforeNode) {
@@ -21,7 +24,9 @@ class ContextProvider extends Renderable {
     for (const consumer of this.#consumers) {
       consumer._connect(this.#providerSignal);
     }
+    this.#mountStack.push({ signal: this.#providerSignal, consumers: this.#mountTimeConsumers });
     this.#child.mountInto(parent, beforeNode);
+    this.#mountStack.pop();
   }
 
   unmount() {
@@ -31,13 +36,20 @@ class ContextProvider extends Renderable {
     for (const consumer of this.#consumers) {
       consumer._disconnect();
     }
+    for (const consumer of this.#mountTimeConsumers) {
+      consumer._disconnect();
+    }
+    this.#mountTimeConsumers = [];
   }
 
   renderToString(render) {
     for (const consumer of this.#consumers) {
       consumer._connect(this.#providerSignal);
     }
-    return render(this.#child);
+    this.#mountStack.push({ signal: this.#providerSignal, consumers: this.#mountTimeConsumers });
+    const html = render(this.#child);
+    this.#mountStack.pop();
+    return html;
   }
 }
 
@@ -93,19 +105,22 @@ function createContextConsumer(defaultValue) {
  * Creates a context for sharing reactive state across a component tree
  * without prop drilling.
  *
- * Returns { serve, state }:
- * - serve(renderable, value?) — wraps a renderable as a context provider.
+ * Returns { scope, state }:
+ * - scope(value?) — creates a new provider level. Returns a state with
+ *     .get(), .set(), path access, and .serve(renderable) to wrap children.
  * - state() — returns a reactive state bound to the nearest ancestor provider.
  *
  * Usage:
  *   const sizeCtx = context([1, 2, 3]);
  *
- *   const Parent = (...children) =>
- *     sizeCtx.serve(Div(...children));
+ *   const Parent = (...children) => {
+ *     const sizes = sizeCtx.scope();
+ *     sizes.set([10, 20, 30]);
+ *     return sizes.serve(Div(...children));
+ *   };
  *
  *   const Child = () => {
  *     const sizes = sizeCtx.state();
- *     sizes.set([4, 5, 6]);
  *     return Div(sizes[0]);
  *   };
  *
@@ -113,18 +128,45 @@ function createContextConsumer(defaultValue) {
  */
 export function context(defaultValue) {
   const pending = [];
+  const mountStack = [];
 
-  const serve = (renderable, value) => {
+  const scope = (value) => {
     const providerSignal = signal(value !== undefined ? value : defaultValue);
-    const consumers = pending.splice(0, pending.length);
-    return new ContextProvider(renderable, providerSignal, consumers);
+
+    const adapter = {
+      kind: 'state',
+      get: () => readSignal(providerSignal),
+      set: (next) => setSignal(providerSignal, next, true),
+      subscribe: (fn) => subscribeSignal(providerSignal, fn),
+      before: providerSignal.before,
+    };
+
+    const providerState = createStateFromAdapter(adapter);
+
+    const serve = (renderable) => {
+      const consumers = pending.splice(0, pending.length);
+      return new ContextProvider(renderable, providerSignal, consumers, mountStack);
+    };
+
+    return new Proxy(providerState, {
+      get(target, prop) {
+        if (prop === 'serve') return serve;
+        return Reflect.get(target, prop);
+      },
+    });
   };
 
   const state = () => {
     const consumer = createContextConsumer(defaultValue);
-    pending.push(consumer);
+    if (mountStack.length > 0) {
+      const top = mountStack[mountStack.length - 1];
+      consumer._connect(top.signal);
+      top.consumers.push(consumer);
+    } else {
+      pending.push(consumer);
+    }
     return consumer.state;
   };
 
-  return { serve, state };
+  return { scope, state };
 }
