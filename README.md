@@ -22,6 +22,28 @@ If your UI should be fast **and** your code should still look like code, this is
 - **No build required**: runs directly in the browser (ESM).
 - **No dependency pile-up**: no 300‑package dependency tree just to render a button.
 
+## Quick Start
+
+Create a new Granular app with Vite:
+
+```bash
+npm create @granularjs/app my-app
+cd my-app
+npm run dev
+```
+
+Or install in an existing project:
+
+```bash
+npm install granular @granular/ui
+```
+
+This creates a new project with:
+- Vite dev server with hot reload
+- granular + @granular/ui
+- Pre-configured routing
+- Example pages with reactivity demos
+
 ## A Tiny Example
 
 ```js
@@ -90,6 +112,7 @@ before(form.values).change((next) => {
 
 ### JS‑First DOM Rendering
 - DOM tags are functions (`Div`, `Span`, `Button`, ...).
+- Each tag accepts **any number of arguments in any order**: props objects (HTML attributes) and children (text, renderables, signals, state, arrays). Examples: `Div('Test')`, `Div({ style: { width: '100px' } }, 'Texto', { className: 'teste' }, 'Mais Texto')`.
 - Props are applied directly to the real DOM.
 - Children accept primitives, renderables, arrays, and observable sources.
 - No HTML template parsing, no VDOM.

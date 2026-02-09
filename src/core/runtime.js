@@ -21,6 +21,7 @@ export { renderToString, hydrate } from './renderable/render-string.js';
 export { QueryClient } from './query/query-client.js';
 export { EventHub } from './events/event-hub.js';
 export { Router, createRouter, router } from './router/router.js';
+export { context } from './context.js';
 export { Elements } from './dom/tags.js';
 export * from './dom/tags.js';
 

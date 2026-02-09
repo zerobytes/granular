@@ -15,6 +15,7 @@ export { Renderable } from "./renderable/renderable.js";
 export { Renderer } from "./renderable/renderer.js";
 export { QueryClient } from "./query/query-client.js";
 export { EventHub } from "./events/event-hub.js";
+export { context } from "./context.js";
 export { Elements } from "./dom/tags.js";
 export * from "./dom/tags.js";
 export { signal, isSignal, setSignal, readSignal } from "./reactivity/signal.js";

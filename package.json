@@ -1,7 +1,7 @@
 {
   "name": "granular",
   "version": "0.1.0",
-  "description": "Granular framework",
+  "description": "JS-first framework with granular reactivity",
   "type": "module",
   "main": "./dist/granular.min.js",
   "module": "./dist/granular.min.js",

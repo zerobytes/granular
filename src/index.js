@@ -36,6 +36,7 @@ export {
   createRouter,
   router,
   Elements,
+  context,
 } from './core/runtime.js';
 
 export * from './core/dom/tags.js';
