@@ -23,6 +23,7 @@ export class Renderer {
      * Normalizes a value into a flat list of renderables:
      * - Renderable instances
      * - DOM Nodes
+     * - ReactiveTextNode for reactive values (state, signal, statePath, computed)
      * - TextNodes created from primitives/objects
      *
      * @param {unknown} value
