@@ -1,7 +1,7 @@
 {
   "name": "@granularjs/core",
   "version": "0.1.0",
-  "description": "JS-first framework with granular reactivity",
+  "description": "JS-first frontend framework with granular reactivity. No Virtual DOM, no build step, no magic — just explicit reactivity and direct DOM updates.",
   "type": "module",
   "main": "./dist/granular.min.js",
   "module": "./dist/granular.min.js",
@@ -21,6 +21,34 @@
   "scripts": {
     "build:minify": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js && npx -y -p typescript@latest tsc -p tsconfig.json",
     "build:debug": "npx -y esbuild src/index.js --bundle --sourcemap --format=esm --outfile=./dist/granular.js && npx -y -p typescript@latest tsc -p tsconfig.json",
-    "build:watch": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js --watch"
-  }
+    "build:watch": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js --watch",
+    "version": "npm run build:minify && git add -A",
+    "postversion": "git push && git push --tags"
+  },
+  "author": "Guilherme Ferreira",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zerobytes/granular.git"
+  },
+  "homepage": "https://granular.web.app",
+  "bugs": {
+    "url": "https://github.com/zerobytes/granular/issues"
+  },
+  "keywords": [
+    "granular",
+    "granularjs",
+    "framework",
+    "frontend",
+    "reactive",
+    "reactivity",
+    "signals",
+    "state",
+    "dom",
+    "no-vdom",
+    "no-virtual-dom",
+    "fine-grained",
+    "javascript",
+    "ui"
+  ]
 }
