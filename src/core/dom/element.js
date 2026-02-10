@@ -1,7 +1,7 @@
 import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { isObservableArray } from '../collections/observable-array.js';
-import { createComment, clearBetween } from './dom.js';
+import { createAnchor } from './dom.js';
 import { normalizeInputFormat, applyInputFormat } from './input-format.js';
 import { isWhen, readWhenValue, subscribeWhenValue } from './when.js';
 import { isSignal, readSignal, subscribeSignal, getMappedArrayMeta } from '../reactivity/signal.js';
@@ -25,6 +25,18 @@ const voidElements = new Set([
   'wbr',
 ]);
 
+const _tplCache = new Map();
+
+function escapeHtml(str) {
+  if (str.indexOf('&') < 0 && str.indexOf('<') < 0 && str.indexOf('>') < 0) return str;
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function escapeAttr(str) {
+  if (str.indexOf('&') < 0 && str.indexOf('"') < 0) return str;
+  return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
 export class ElementNode extends Renderable {
   tagName;
   props;
@@ -45,11 +57,26 @@ export class ElementNode extends Renderable {
   mountInto(parent, beforeNode) {
     if (this.#mounted) return;
     this.#mounted = true;
-    const el = document.createElement(this.tagName);
-    this.#el = el;
-    this.#applyProps(el);
-    this.#appendChildren(el);
-    parent.insertBefore(el, beforeNode);
+    const html = this.#tryCompileTemplate();
+    if (html !== null) {
+      let tpl = _tplCache.get(html);
+      if (!tpl) {
+        tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        _tplCache.set(html, tpl);
+      }
+      const el = tpl.content.firstChild.cloneNode(true);
+      this.#el = el;
+      this.#applyDynamicProps(el);
+      this.#bindTemplateChildren(el);
+      parent.insertBefore(el, beforeNode);
+    } else {
+      const el = document.createElement(this.tagName);
+      this.#el = el;
+      this.#applyProps(el);
+      this.#appendChildren(el);
+      parent.insertBefore(el, beforeNode);
+    }
   }
 
   unmount() {
@@ -57,9 +84,176 @@ export class ElementNode extends Renderable {
     this.#mounted = false;
     for (const unsub of this.#unsubs) unsub();
     this.#unsubs = [];
+    for (const unsub of this.#styleUnsubs) unsub();
+    this.#styleUnsubs = [];
     this.#cleanupChildren();
     this.#el?.remove();
     this.#el = null;
+  }
+
+  #tryCompileTemplate() {
+    const props = this.props;
+    if (props) {
+      if (props.textContent != null || props.innerHTML != null || props.format) return null;
+    }
+    const tag = this.tagName;
+    let attrStr = '';
+    if (props) {
+      let first = true;
+      for (const key in props) {
+        const value = props[key];
+        if (key === 'node' || key === 'children' || key === 'content' || key === 'format') continue;
+        if (key === 'style' || key === 'textContent' || key === 'innerHTML') continue;
+        if (key.startsWith('on') && typeof value === 'function') continue;
+        if (isSignal(value) || isState(value) || isStatePath(value) || isWhen(value) || isComputed(value)) continue;
+        if (key === 'className' || key === 'class') {
+          if (value != null && value !== false) { attrStr += (first ? ' class="' : '" class="') + escapeAttr(String(value)); first = false; }
+          continue;
+        }
+        if (key === 'htmlFor') {
+          if (value != null && value !== false) { attrStr += (first ? ' for="' : '" for="') + escapeAttr(String(value)); first = false; }
+          continue;
+        }
+        if (value === true) { attrStr += ' ' + key; continue; }
+        if (value === false || value == null) continue;
+        attrStr += (first ? ' ' : '" ') + key + '="' + escapeAttr(String(value));
+        first = false;
+      }
+      if (!first) attrStr += '"';
+    }
+    if (voidElements.has(tag.toLowerCase())) return '<' + tag + attrStr + '>';
+    let childHtml = '';
+    let lastWasText = false;
+    for (let i = 0, len = this.children.length; i < len; i++) {
+      const child = this.children[i];
+      if (child == null || child === false) continue;
+      if (child instanceof ElementNode) {
+        const r = child.#tryCompileTemplate();
+        if (r === null) return null;
+        childHtml += r;
+        lastWasText = false;
+      } else if (isSignal(child) || isState(child) || isStatePath(child)) {
+        if (lastWasText) childHtml += '<!---->';
+        childHtml += ' ';
+        lastWasText = true;
+      } else if (typeof child === 'string') {
+        if (lastWasText) childHtml += '<!---->';
+        childHtml += escapeHtml(child);
+        lastWasText = true;
+      } else if (typeof child === 'number') {
+        if (lastWasText) childHtml += '<!---->';
+        childHtml += String(child);
+        lastWasText = true;
+      } else {
+        return null;
+      }
+    }
+    return '<' + tag + attrStr + '>' + childHtml + '</' + tag + '>';
+  }
+
+  #applyDynamicProps(el) {
+    const props = this.props;
+    if (!props) return;
+    for (const key in props) {
+      const rawValue = props[key];
+      if (key === 'style') {
+        this.#applyStyle(el, rawValue);
+        continue;
+      }
+      if (key.startsWith('on') && typeof rawValue === 'function') {
+        this.#setProp(el, key, rawValue);
+        continue;
+      }
+      if (isWhen(rawValue)) {
+        this.#applyPropAsWhen({ el, key, rawValue, formatConfig: null });
+        continue;
+      }
+      if (isSignal(rawValue)) {
+        this.#applyPropAsSignal({ el, key, rawValue, formatConfig: null });
+        continue;
+      }
+      if (isState(rawValue) || isStatePath(rawValue) || isComputed(rawValue)) {
+        this.#applyPropAsState({ el, key, rawValue, formatConfig: null });
+        continue;
+      }
+    }
+    if (props.node && (isState(props.node) || isStatePath(props.node))) {
+      props.node.set(el);
+    }
+  }
+
+  #bindTemplateChildren(el) {
+    let domIdx = 0;
+    let lastWasText = false;
+    for (const child of this.children) {
+      if (child == null || child === false) continue;
+      const isEl = child instanceof ElementNode;
+      if (!isEl && lastWasText) domIdx++;
+      if (isEl) {
+        const childEl = el.childNodes[domIdx];
+        child.#el = childEl;
+        child.#mounted = true;
+        child.#applyDynamicProps(childEl);
+        child.#bindTemplateChildren(childEl);
+        this.#unsubs.push(() => child.unmount());
+        domIdx++;
+        lastWasText = false;
+      } else if (isSignal(child)) {
+        this.#bindReactiveChild(el, domIdx, child, readSignal, subscribeSignal);
+        domIdx++;
+        lastWasText = true;
+      } else if (isState(child) || isStatePath(child)) {
+        this.#bindReactiveChild(el, domIdx, child, readState, subscribeState);
+        domIdx++;
+        lastWasText = true;
+      } else if (typeof child === 'string' || typeof child === 'number') {
+        domIdx++;
+        lastWasText = true;
+      }
+    }
+  }
+
+  #bindReactiveChild(el, domIdx, child, read, subscribe) {
+    const placeholder = el.childNodes[domIdx];
+    const initial = read(child);
+    const isComplex = (v) => v != null && typeof v === 'object';
+
+    if (!isComplex(initial)) {
+      let tn = placeholder;
+      let anchor = null;
+      let dynState = null;
+      tn.nodeValue = Renderer.toText(initial);
+      const unsub = subscribe(child, () => {
+        const next = read(child);
+        if (anchor) {
+          this.#renderDynamic(next, anchor, dynState);
+        } else if (isComplex(next)) {
+          anchor = createAnchor('r');
+          tn.parentNode.replaceChild(anchor, tn);
+          tn = null;
+          dynState = { kind: 'static', renderables: [], nodes: [] };
+          this.#renderDynamic(next, anchor, dynState);
+        } else {
+          tn.nodeValue = Renderer.toText(next);
+        }
+      });
+      if (unsub) this.#unsubs.push(() => {
+        unsub();
+        if (dynState) this.#cleanupDynamic(dynState);
+      });
+    } else {
+      const anchor = createAnchor('r');
+      placeholder.parentNode.replaceChild(anchor, placeholder);
+      const dynState = { kind: 'static', renderables: [], nodes: [] };
+      this.#renderDynamic(initial, anchor, dynState);
+      const unsub = subscribe(child, () => {
+        this.#renderDynamic(read(child), anchor, dynState);
+      });
+      if (unsub) this.#unsubs.push(() => {
+        unsub();
+        this.#cleanupDynamic(dynState);
+      });
+    }
   }
 
   renderToString(render) {
@@ -538,73 +732,61 @@ export class ElementNode extends Renderable {
     if (child == null || child === false) return;
     const mapped = getMappedArrayMeta(child) || getMappedMeta(child);
     if (mapped) {
-      const start = createComment('zb:bind:start', 'map');
-      const end = createComment('zb:bind:end', 'map');
-      parent.insertBefore(start, beforeNode);
-      parent.insertBefore(end, beforeNode);
-      const state = { kind: 'static', values: [] };
+      const anchor = createAnchor('map');
+      parent.insertBefore(anchor, beforeNode);
+      const dynState = { kind: 'static', renderables: [], nodes: [] };
       const update = () => {
         const src = mapped.path ? readStateMeta(mapped) : readSignal(mapped.signal);
         const list = Array.isArray(src) ? src.map(mapped.mapFn) : [];
-        this.#renderDynamic(list, start, end, state);
+        this.#renderDynamic(list, anchor, dynState);
       };
       update();
       const unsub = mapped.path ? subscribeStateMeta(mapped, update) : subscribeSignal(mapped.signal, update);
       if (unsub) this.#unsubs.push(() => {
         unsub();
-        this.#cleanupDynamic(state, start, end);
-        start.remove();
-        end.remove();
+        this.#cleanupDynamic(dynState);
+        anchor.remove();
       });
       return;
     }
     if (isSignal(child)) {
-      const start = createComment('zb:bind:start', 'signal');
-      const end = createComment('zb:bind:end', 'signal');
-      parent.insertBefore(start, beforeNode);
-      parent.insertBefore(end, beforeNode);
-      const state = { kind: 'static', values: [] };
-      const update = () => this.#renderDynamic(readSignal(child), start, end, state);
+      const anchor = createAnchor('sig');
+      parent.insertBefore(anchor, beforeNode);
+      const dynState = { kind: 'static', renderables: [], nodes: [] };
+      const update = () => this.#renderDynamic(readSignal(child), anchor, dynState);
       update();
       const unsub = subscribeSignal(child, update);
       if (unsub) this.#unsubs.push(() => {
         unsub();
-        this.#cleanupDynamic(state, start, end);
-        start.remove();
-        end.remove();
+        this.#cleanupDynamic(dynState);
+        anchor.remove();
       });
       return;
     }
 
     if (isState(child) || isStatePath(child)) {
-      const start = createComment('zb:bind:start', 'state');
-      const end = createComment('zb:bind:end', 'state');
-      parent.insertBefore(start, beforeNode);
-      parent.insertBefore(end, beforeNode);
-      const state = { kind: 'static', values: [] };
-      const update = () => this.#renderDynamic(readState(child), start, end, state);
+      const anchor = createAnchor('st');
+      parent.insertBefore(anchor, beforeNode);
+      const dynState = { kind: 'static', renderables: [], nodes: [] };
+      const update = () => this.#renderDynamic(readState(child), anchor, dynState);
       update();
       const unsub = subscribeState(child, update);
       if (unsub) this.#unsubs.push(() => {
         unsub();
-        this.#cleanupDynamic(state, start, end);
-        start.remove();
-        end.remove();
+        this.#cleanupDynamic(dynState);
+        anchor.remove();
       });
       return;
     }
 
     if (isObservableArray(child)) {
-      const start = createComment('zb:bind:start', 'list');
-      const end = createComment('zb:bind:end', 'list');
-      parent.insertBefore(start, beforeNode);
-      parent.insertBefore(end, beforeNode);
-      const state = { kind: 'list', items: [], unsub: null, source: child };
-      this.#renderDynamic(child, start, end, state);
+      const anchor = createAnchor('ol');
+      parent.insertBefore(anchor, beforeNode);
+      const dynState = { kind: 'list', items: [], unsub: null, source: child };
+      this.#renderDynamic(child, anchor, dynState);
       this.#unsubs.push(() => {
-        this.#cleanupDynamic(state, start, end);
-        start.remove();
-        end.remove();
+        this.#cleanupDynamic(dynState);
+        anchor.remove();
       });
       return;
     }
@@ -624,50 +806,75 @@ export class ElementNode extends Renderable {
     parent.insertBefore(document.createTextNode(Renderer.toText(child)), beforeNode);
   }
 
-  #cleanupDynamic(state, start, end) {
-    if (state.kind === 'static') {
-      for (const r of state.values) Renderer.unmount(r);
-      state.values = [];
-      if (start && end) clearBetween(start, end);
+  #cleanupDynamic(dynState) {
+    if (dynState.kind === 'static') {
+      for (const r of dynState.renderables) Renderer.unmount(r);
+      dynState.renderables = [];
+      for (const n of dynState.nodes) if (n.parentNode) n.remove();
+      dynState.nodes = [];
       return;
     }
-    if (state.kind === 'list') {
-      state.unsub?.();
-      for (const it of state.items) {
-        for (const r of it.values) Renderer.unmount(r);
-        clearBetween(it.start, it.end);
-        it.start.remove();
-        it.end.remove();
+    if (dynState.kind === 'list') {
+      dynState.unsub?.();
+      for (const it of dynState.items) {
+        for (const r of it.renderables) Renderer.unmount(r);
+        for (const n of it.nodes) if (n.parentNode) n.remove();
       }
-      state.items = [];
+      dynState.items = [];
     }
   }
 
-  #renderDynamic(value, start, end, state) {
+  #collectNodes(marker, anchor) {
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== anchor) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+    return nodes;
+  }
+
+  #mountAndCollect(renderables, parent, anchor) {
+    const marker = document.createTextNode('');
+    parent.insertBefore(marker, anchor);
+    for (const r of renderables) {
+      if (Renderer.isRenderable(r)) {
+        r.mountInto(parent, anchor);
+      } else if (Renderer.isDomNode(r)) {
+        parent.insertBefore(r, anchor);
+      }
+    }
+    return this.#collectNodes(marker, anchor);
+  }
+
+  #renderDynamic(value, anchor, dynState) {
     if (isObservableArray(value)) {
-      if (state.kind === 'list' && state.source === value) return;
-      this.#cleanupDynamic(state, start, end);
-      state.kind = 'list';
-      state.source = value;
-      const parent = end.parentNode;
+      if (dynState.kind === 'list' && dynState.source === value) return;
+      this.#cleanupDynamic(dynState);
+      dynState.kind = 'list';
+      dynState.source = value;
+      const parent = anchor.parentNode;
       const items = [];
+
+      const refNodeAt = (idx) => {
+        for (let i = idx; i < items.length; i++) {
+          if (items[i].nodes.length) return items[i].nodes[0];
+        }
+        return anchor;
+      };
+
       const makeItemMount = (idx, rawItem) => {
-        const refNode = idx < items.length ? items[idx].start : end;
-        const itemStart = createComment('zb:item:start', 'item');
-        const itemEnd = createComment('zb:item:end', 'item');
-        parent.insertBefore(itemStart, refNode);
-        parent.insertBefore(itemEnd, refNode);
-        const values = Renderer.normalize(rawItem);
-        for (const r of values) this.#mountRenderable(parent, r, itemEnd);
-        items.splice(idx, 0, { start: itemStart, end: itemEnd, values });
+        const refNode = refNodeAt(idx);
+        const renderables = Renderer.normalize(rawItem);
+        const nodes = this.#mountAndCollect(renderables, parent, refNode);
+        items.splice(idx, 0, { renderables, nodes });
       };
       const removeItemMount = (idx, count) => {
         const removed = items.splice(idx, count);
         for (const it of removed) {
-          for (const r of it.values) Renderer.unmount(r);
-          clearBetween(it.start, it.end);
-          it.start.remove();
-          it.end.remove();
+          for (const r of it.renderables) Renderer.unmount(r);
+          for (const n of it.nodes) if (n.parentNode) n.remove();
         }
       };
       const setItemMount = (idx, rawItem) => {
@@ -692,34 +899,24 @@ export class ElementNode extends Renderable {
         }
         if (patch.type === 'set') setItemMount(patch.index, patch.value);
       });
-      state.items = items;
-      state.unsub = unsub;
+      dynState.items = items;
+      dynState.unsub = unsub;
       return;
     }
 
     if (Array.isArray(value)) {
-      this.#cleanupDynamic(state, start, end);
-      state.kind = 'static';
-      const next = Renderer.normalize(value);
-      state.values = next;
-      for (const r of next) this.#mountRenderable(end.parentNode, r, end);
+      this.#cleanupDynamic(dynState);
+      dynState.kind = 'static';
+      const renderables = Renderer.normalize(value);
+      dynState.renderables = renderables;
+      dynState.nodes = this.#mountAndCollect(renderables, anchor.parentNode, anchor);
       return;
     }
 
-    this.#cleanupDynamic(state, start, end);
-    state.kind = 'static';
-    const next = Renderer.normalize(value);
-    state.values = next;
-    for (const r of next) this.#mountRenderable(end.parentNode, r, end);
-  }
-
-  #mountRenderable(parent, renderable, beforeNode) {
-    if (Renderer.isRenderable(renderable)) {
-      renderable.mountInto(parent, beforeNode);
-      return;
-    }
-    if (Renderer.isDomNode(renderable)) {
-      parent.insertBefore(renderable, beforeNode);
-    }
+    this.#cleanupDynamic(dynState);
+    dynState.kind = 'static';
+    const renderables = Renderer.normalize(value);
+    dynState.renderables = renderables;
+    dynState.nodes = this.#mountAndCollect(renderables, anchor.parentNode, anchor);
   }
 }

@@ -1,15 +1,15 @@
 import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
-import { createComment, clearBetween } from './dom.js';
+import { createAnchor } from './dom.js';
 
 export class ErrorBoundaryNode extends Renderable {
   #fallback;
   #onError;
   #child;
-  #start = null;
-  #end = null;
+  #anchor = null;
   #mounted = false;
   #mountedValues = [];
+  #mountedNodes = [];
 
   constructor(options, child) {
     super();
@@ -21,10 +21,8 @@ export class ErrorBoundaryNode extends Renderable {
   mountInto(parent, beforeNode) {
     if (this.#mounted) return;
     this.#mounted = true;
-    this.#start = createComment('zb:error:start', 'error');
-    this.#end = createComment('zb:error:end', 'error');
-    parent.insertBefore(this.#start, beforeNode);
-    parent.insertBefore(this.#end, beforeNode);
+    this.#anchor = createAnchor('error');
+    parent.insertBefore(this.#anchor, beforeNode);
     this.#renderSafe();
   }
 
@@ -32,31 +30,42 @@ export class ErrorBoundaryNode extends Renderable {
     if (!this.#mounted) return;
     this.#mounted = false;
     this.#cleanup();
-    if (this.#start && this.#end) {
-      clearBetween(this.#start, this.#end);
-      this.#start.remove();
-      this.#end.remove();
+    if (this.#anchor) {
+      this.#anchor.remove();
+      this.#anchor = null;
     }
-    this.#start = null;
-    this.#end = null;
   }
 
   #cleanup() {
     for (const r of this.#mountedValues) Renderer.unmount(r);
     this.#mountedValues = [];
-    if (this.#start && this.#end) clearBetween(this.#start, this.#end);
+    for (const n of this.#mountedNodes) if (n.parentNode) n.remove();
+    this.#mountedNodes = [];
   }
 
   #renderValue(value) {
     const values = Renderer.normalize(value);
     this.#mountedValues = values;
+    const parent = this.#anchor.parentNode;
+    const marker = document.createTextNode('');
+    parent.insertBefore(marker, this.#anchor);
+
     for (const r of values) {
       if (Renderer.isRenderable(r)) {
-        r.mountInto(this.#end.parentNode, this.#end);
+        r.mountInto(parent, this.#anchor);
       } else if (Renderer.isDomNode(r)) {
-        this.#end.parentNode.insertBefore(r, this.#end);
+        parent.insertBefore(r, this.#anchor);
       }
     }
+
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== this.#anchor) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+    this.#mountedNodes = nodes;
   }
 
   #renderSafe() {

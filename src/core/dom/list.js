@@ -1,15 +1,14 @@
 import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { isObservableArray } from '../collections/observable-array.js';
-import { createComment, clearBetween } from './dom.js';
+import { createAnchor } from './dom.js';
 import { signal, setSignal, isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
 import { state, isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
 
 export class ListNode extends Renderable {
   #items;
   #renderItem;
-  #start = null;
-  #end = null;
+  #anchor = null;
   #mounted = false;
   #unsub = null;
   #itemRefs = [];
@@ -23,10 +22,8 @@ export class ListNode extends Renderable {
   mountInto(parent, beforeNode) {
     if (this.#mounted) return;
     this.#mounted = true;
-    this.#start = createComment('zb:list:start', 'list');
-    this.#end = createComment('zb:list:end', 'list');
-    parent.insertBefore(this.#start, beforeNode);
-    parent.insertBefore(this.#end, beforeNode);
+    this.#anchor = createAnchor('list');
+    parent.insertBefore(this.#anchor, beforeNode);
 
     const initial = this.#readItems();
     this.#mountAll(initial);
@@ -39,13 +36,10 @@ export class ListNode extends Renderable {
     if (this.#unsub) this.#unsub();
     this.#unsub = null;
     this.#cleanup();
-    if (this.#start && this.#end) {
-      clearBetween(this.#start, this.#end);
-      this.#start.remove();
-      this.#end.remove();
+    if (this.#anchor) {
+      this.#anchor.remove();
+      this.#anchor = null;
     }
-    this.#start = null;
-    this.#end = null;
   }
 
   renderToString(render) {
@@ -114,10 +108,8 @@ export class ListNode extends Renderable {
 
   #cleanup() {
     for (const it of this.#itemRefs) {
-      for (const r of it.values) Renderer.unmount(r);
-      clearBetween(it.start, it.end);
-      it.start.remove();
-      it.end.remove();
+      for (const r of it.renderables) Renderer.unmount(r);
+      for (const n of it.nodes) if (n.parentNode) n.remove();
     }
     this.#itemRefs = [];
   }
@@ -127,28 +119,49 @@ export class ListNode extends Renderable {
     this.#mountAll(items);
   }
 
+  #refNodeAt(index) {
+    for (let i = index; i < this.#itemRefs.length; i++) {
+      if (this.#itemRefs[i].nodes.length) return this.#itemRefs[i].nodes[0];
+    }
+    return this.#anchor;
+  }
+
   #insert(index, item) {
-    const refNode = index < this.#itemRefs.length ? this.#itemRefs[index].start : this.#end;
-    const itemStart = createComment('zb:item:start', 'item');
-    const itemEnd = createComment('zb:item:end', 'item');
-    const parent = this.#end.parentNode;
-    parent.insertBefore(itemStart, refNode);
-    parent.insertBefore(itemEnd, refNode);
+    const refNode = this.#refNodeAt(index);
+    const parent = this.#anchor.parentNode;
+
+    const marker = document.createTextNode('');
+    parent.insertBefore(marker, refNode);
+
     const itemState = state(item);
     const indexSignal = signal(index);
     const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
-    const values = Renderer.normalize(rendered);
-    for (const r of values) this.#mountRenderable(parent, r, itemEnd);
-    this.#itemRefs.splice(index, 0, { start: itemStart, end: itemEnd, values, state: itemState, index: indexSignal });
+    const renderables = Renderer.normalize(rendered);
+
+    for (const r of renderables) {
+      if (Renderer.isRenderable(r)) {
+        r.mountInto(parent, refNode);
+      } else if (Renderer.isDomNode(r)) {
+        parent.insertBefore(r, refNode);
+      }
+    }
+
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== refNode) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+
+    this.#itemRefs.splice(index, 0, { nodes, renderables, state: itemState, index: indexSignal });
   }
 
   #remove(index, count) {
     const removed = this.#itemRefs.splice(index, count);
     for (const it of removed) {
-      for (const r of it.values) Renderer.unmount(r);
-      clearBetween(it.start, it.end);
-      it.start.remove();
-      it.end.remove();
+      for (const r of it.renderables) Renderer.unmount(r);
+      for (const n of it.nodes) if (n.parentNode) n.remove();
     }
   }
 
@@ -166,16 +179,6 @@ export class ListNode extends Renderable {
     for (let i = fromIndex; i < this.#itemRefs.length; i++) {
       const ref = this.#itemRefs[i];
       if (ref.index) setSignal(ref.index, i);
-    }
-  }
-
-  #mountRenderable(parent, renderable, beforeNode) {
-    if (Renderer.isRenderable(renderable)) {
-      renderable.mountInto(parent, beforeNode);
-      return;
-    }
-    if (Renderer.isDomNode(renderable)) {
-      parent.insertBefore(renderable, beforeNode);
     }
   }
 }

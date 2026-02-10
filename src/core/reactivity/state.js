@@ -1,7 +1,7 @@
 import { signal, setSignal, readSignal, subscribeSignal } from './signal.js';
 
-const STATE = Symbol('zb.state');
-const STATE_META = Symbol('zb.state.meta');
+const STATE = Symbol('g.state');
+const STATE_META = Symbol('g.state.meta');
 
 function isObject(value) {
   return value !== null && typeof value === 'object';
