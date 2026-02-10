@@ -111,14 +111,14 @@ cd my-app
 npm run dev
 
 # Or add to existing project
-npm install granular @granular/ui
+npm install @granularjs/core @granularjs/ui
 ```
 
 ### Entry Point
 
 ```javascript
 // main.js
-import { bootstrap } from 'granular';
+import { bootstrap } from '@granularjs/core';
 import { App } from './app.js';
 
 bootstrap(App, '#app');
@@ -128,7 +128,7 @@ bootstrap(App, '#app');
 
 ```javascript
 // main.js
-import { createRouter } from 'granular';
+import { createRouter } from '@granularjs/core';
 import { HomePage } from './pages/home.page.js';
 import { AboutPage } from './pages/about.page.js';
 
@@ -152,7 +152,7 @@ router.mount('#app');
 All HTML tags are available as functions with PascalCase names:
 
 ```javascript
-import { Div, Span, Button, Input, H1, P, A, Ul, Li, Form, Label } from 'granular';
+import { Div, Span, Button, Input, H1, P, A, Ul, Li, Form, Label } from '@granularjs/core';
 
 // Basic element
 Div('Hello World')
@@ -243,7 +243,7 @@ Input({
 `state(initialValue)` creates a reactive container:
 
 ```javascript
-import { state } from 'granular';
+import { state } from '@granularjs/core';
 
 const count = state(0);
 
@@ -268,7 +268,7 @@ user.name.get()  // Returns 'Maria'
 `signal(value)` is a simpler observable primitive:
 
 ```javascript
-import { signal, readSignal, setSignal } from 'granular';
+import { signal, readSignal, setSignal } from '@granularjs/core';
 
 const count = signal(0);
 readSignal(count)  // 0
@@ -280,7 +280,7 @@ setSignal(count, 1)
 `after(...targets)` observes one or more reactive targets:
 
 ```javascript
-import { after, state } from 'granular';
+import { after, state } from '@granularjs/core';
 
 const name = state('');
 const age = state(0);
@@ -364,7 +364,7 @@ age.set(25);  // Allowed
 `persist(state, options)` saves state to localStorage:
 
 ```javascript
-import { persist, state } from 'granular';
+import { persist, state } from '@granularjs/core';
 
 const theme = persist(state('light'), { key: 'app-theme' });
 
@@ -378,7 +378,7 @@ theme.set('dark');  // Saved to localStorage
 For fine-grained array updates:
 
 ```javascript
-import { observableArray } from 'granular';
+import { observableArray } from '@granularjs/core';
 
 const items = observableArray([1, 2, 3]);
 
@@ -474,7 +474,7 @@ UserCard({ user: { name: 'Ana', email: 'ana@example.com', role: 'Admin' } })
 `when(condition, renderTrue, renderFalse)` for reactive conditionals:
 
 ```javascript
-import { when, state } from 'granular';
+import { when, state } from '@granularjs/core';
 
 const loggedIn = state(false);
 
@@ -536,26 +536,61 @@ when(condition,
 
 ### Using list()
 
-`list(items, renderItem)` efficiently renders arrays:
+`list(items, renderItem)` renders arrays with fine-grained reactivity. Each item is wrapped in `state(item)` and each index in `signal(index)`, so the render function receives **reactive wrappers**, not raw values.
 
 ```javascript
-import { list, observableArray } from 'granular';
+import { list, observableArray, after } from '@granularjs/core';
 
 const todos = observableArray([
-  { id: 1, text: 'Learn Granular' },
-  { id: 2, text: 'Build app' },
+  { id: 1, text: 'Learn Granular', done: false },
+  { id: 2, text: 'Build app', done: false },
 ]);
 
-// Render list
+// renderItem receives (itemState, indexSignal) — both reactive
 Ul(
   list(todos, (todo, index) => 
-    Li({ key: todo.id }, todo.text)
+    Li(
+      Span(index),           // index is a signal — reactive, auto-updates on insert/remove
+      Span(' - '),
+      Span(todo.text),       // todo.text is a StatePath — reactive binding
+      Span(after(todo.done).compute(d => d ? ' ✓' : '')),
+      Button({
+        onClick: () => todo.set().done = !todo.done.get()  // update via state
+      }, 'Toggle')
+    )
   )
 )
 
-// When items change, only affected items update
-todos.push({ id: 3, text: 'Deploy' });  // Only adds one Li
-todos[0].text = 'Master Granular';      // Only updates first Li's text
+// Insert — only adds new DOM nodes, existing items untouched
+todos.push({ id: 3, text: 'Deploy', done: false });
+
+// Replace item — only the bound text nodes update, DOM structure stays intact
+todos[0] = { id: 1, text: 'Master Granular', done: true };
+```
+
+### CRITICAL: renderItem receives state, not raw values
+
+```javascript
+// The render function receives:
+// - item: state(rawItem)   → use item.name for reactive bindings, item.name.get() for raw value
+// - index: signal(number)  → use index for reactive display, index.get() for raw number
+
+list(items, (item, index) => {
+  // REACTIVE — use state paths directly in DOM
+  Span(item.name)          // updates when name changes
+  Span(item.status)        // updates when status changes
+
+  // RAW VALUE — use .get() inside event closures
+  onClick: () => doSomething(item.id.get())
+  onClick: (e) => handler(index.get(), e)
+
+  // DEFAULTS — use after().compute() (StatePath is always truthy, can't use ||)
+  after(item.size).compute(s => s || 'md')
+
+  // WRONG — .get() at the top kills reactivity
+  const raw = item.get();  // ❌ Static snapshot, won't react to changes
+  Span(raw.name)           // ❌ Just a string, never updates
+});
 ```
 
 ### List with State
@@ -564,11 +599,11 @@ todos[0].text = 'Master Granular';      // Only updates first Li's text
 const items = state(['a', 'b', 'c']);
 
 Ul(
-  list(items, (item, index) => Li(item))
+  list(items, (item, index) => Li(item))  // item is state('a'), reactive
 )
 
-// Update entire array
-items.set(['x', 'y', 'z']);  // Replaces all items
+// Update entire array — full reset
+items.set(['x', 'y', 'z']);
 ```
 
 ### Virtual List (Windowing)
@@ -576,7 +611,7 @@ items.set(['x', 'y', 'z']);  // Replaces all items
 For large lists, use virtualization:
 
 ```javascript
-import { virtualList, observableArray } from 'granular';
+import { virtualList, observableArray } from '@granularjs/core';
 
 const rows = observableArray(Array.from({ length: 10000 }, (_, i) => ({ id: i })));
 
@@ -597,7 +632,7 @@ Div({ style: { height: '400px', overflow: 'auto' } },
 ### Basic Router Setup
 
 ```javascript
-import { createRouter } from 'granular';
+import { createRouter } from '@granularjs/core';
 
 // Define routes with pages
 const router = createRouter({
@@ -773,7 +808,7 @@ Input({
 ### Basic Form
 
 ```javascript
-import { Form, Input, Button, state } from 'granular';
+import { Form, Input, Button, state } from '@granularjs/core';
 
 const LoginForm = () => {
   const email = state('');
@@ -811,7 +846,7 @@ const LoginForm = () => {
 ### Using the form() Helper
 
 ```javascript
-import { form, Form, Input } from 'granular';
+import { form, Form, Input } from '@granularjs/core';
 
 const ContactForm = () => {
   const { values, errors, dirty, touched, validators, reset } = form({
@@ -886,7 +921,7 @@ Input({
 ### Using QueryClient
 
 ```javascript
-import { QueryClient } from 'granular';
+import { QueryClient } from '@granularjs/core';
 
 const queryClient = new QueryClient();
 
@@ -1029,7 +1064,7 @@ Export state from a module for global access:
 
 ```javascript
 // stores/user.store.js
-import { state, after } from 'granular';
+import { state, after } from '@granularjs/core';
 
 export const userStore = state({
   user: null,
@@ -1107,7 +1142,7 @@ import {
   Modal, 
   Table,
   // ... etc
-} from '@granular/ui';
+} from '@granularjs/ui';
 ```
 
 ### IMPORTANT: Granular-UI Component Patterns
@@ -1417,7 +1452,7 @@ const Display = ({ count }) => {
 ### DON'T: Create State in Render Expressions
 
 ```javascript
-// WRONG - creates new state every time
+// WRONG - creates new state every time the list resets
 const items = state([1, 2, 3]);
 
 list(items, (item) => {
@@ -1433,6 +1468,32 @@ const ItemWithExpand = ({ item }) => {
     when(expanded, () => Div('Details'))
   );
 };
+```
+
+### DON'T: Call .get() at the Top of list() Render Functions
+
+```javascript
+// WRONG - extracts raw value once, kills all reactivity
+list(items, (item) => {
+  const raw = item.get();       // ❌ Static snapshot
+  return Div(raw.name);         // ❌ Never updates
+});
+
+// CORRECT - use state paths for reactive bindings
+list(items, (item) => {
+  return Div(
+    Span(item.name),            // ✅ Reactive — updates when name changes
+    Button({
+      onClick: () => action(item.id.get())  // ✅ .get() inside closure reads at call time
+    }, 'Act')
+  );
+});
+
+// WRONG - using || with StatePath (always truthy)
+list(items, (item) => Button({ size: item.size || 'sm' }));  // ❌ Always returns StatePath
+
+// CORRECT - use after().compute() for defaults
+list(items, (item) => Button({ size: after(item.size).compute(s => s || 'sm') }));  // ✅
 ```
 
 ### DON'T: Use Non-Arrow Functions in when()
@@ -1513,7 +1574,10 @@ Input({ value: text, onInput: e => text.set(e.target.value) })
 when(condition, () => TrueCase(), () => FalseCase())
 
 // === LIST ===
-list(items, (item, i) => Div(item.name))
+// renderItem receives (itemState, indexSignal) — reactive wrappers
+list(items, (item, index) => Div(index, ' - ', item.name))
+// item.name is a StatePath (reactive), index is a signal (reactive)
+// Use .get() only in event closures: onClick: () => fn(item.id.get())
 virtualList(items, { render: item => Row(item), itemSize: 48 })
 
 // === ROUTER ===

@@ -35,7 +35,7 @@ npm run dev
 Or install in an existing project:
 
 ```bash
-npm install granular @granular/ui
+npm install @granularjs/core @granularjs/ui
 ```
 
 This creates a new project with:
@@ -151,7 +151,7 @@ It accepts a `state` or `signal` and is set when the element mounts.
 
 Example:
 ```js
-import { Div, state } from 'granular';
+import { Div, state } from '@granularjs/core';
 
 const rootEl = state(null);
 
@@ -232,6 +232,25 @@ Options:
 
 `list(items, renderItem)`:
 - Efficient list rendering from observable arrays, signals, or state.
+- Each item is wrapped in `state(item)` and each index in `signal(index)`.
+- `renderItem` receives `(itemState, indexSignal)` — reactive wrappers, not raw values.
+- On `set` patches, the existing state is updated (`itemState.set(newValue)`), so only the specific DOM nodes bound to changed properties update. No DOM destruction/recreation.
+- Use state paths for reactive bindings: `Span(item.name)` updates only that text node.
+- Use `.get()` inside event closures for raw values: `onClick: () => doSomething(item.id.get())`.
+
+Example:
+```js
+const todos = observableArray([{ text: 'Learn', done: false }]);
+
+list(todos, (todo) => Div(
+  Span(todo.text),                                  // reactive binding
+  Span(after(todo.done).compute(d => d ? '✓' : '○')), // reactive computed
+  Button({ onClick: () => todo.set().done = !todo.done.get() }, 'Toggle')
+))
+
+todos.push({ text: 'Build', done: false }); // only adds new DOM
+todos[0] = { text: 'Master', done: true };  // only updates bound text nodes
+```
 
 `when(condition, renderTrue, renderFalse)`:
 - Reactive conditional rendering without re‑rendering parents.
@@ -274,7 +293,7 @@ Context gives you React-like sharing without React-like complexity. No Provider 
 
 Example:
 ```js
-import { context, Div, Text, after } from 'granular'
+import { context, Div, Text, after } from '@granularjs/core'
 
 const themeCtx = context('light')
 
@@ -472,7 +491,7 @@ Pattern tokens:
 
 Example:
 ```js
-import { Input, state } from 'granular';
+import { Input, state } from '@granularjs/core';
 
 const phone = state('');
 

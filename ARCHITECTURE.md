@@ -133,6 +133,21 @@ Behavior:
   - `subscribe(fn)`
   - `before()` / `after()` hooks (EventHub)
 
+### list
+Module: `src/core/dom/list.js`
+
+- Renders a reactive list from `observableArray`, `state`, `signal`, or plain array.
+- Each item is wrapped in `state(item)` and each index in `signal(index)`.
+- `renderItem(itemState, indexSignal)` receives reactive wrappers, not raw values.
+- On `observableArray` patches:
+  - `insert`: mounts new items without touching existing DOM.
+  - `remove`: unmounts only the removed items.
+  - `set`: calls `itemState.set(newValue)` on the existing state — the reactive system propagates only the changed properties to their bound DOM nodes. No DOM destruction/recreation.
+  - `reset`: full cleanup and remount.
+- On `state`/`signal` source change: full reset (entire array replaced).
+- Index signals are updated automatically after insert/remove operations.
+- SSR via `renderToString` wraps items in state for consistent behavior.
+
 ### virtualList
 Module: `src/core/dom/virtual-list.js`
 
