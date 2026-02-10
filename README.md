@@ -85,6 +85,7 @@ Yes, we are poking the bear — but for a reason. Complexity and over‑abstract
 
 - **Core runtime**: DOM tags, renderables, granular updates.
 - **State**: `state()` + computed values + persistence.
+- **Context**: share reactive state across a component tree without prop drilling.
 - **Query/Refetch**: caching, dedupe, retries.
 - **Router**: history/hash/memory with guards and transitions.
 - **Events**: `before/after` hooks everywhere (variadic).
@@ -260,6 +261,55 @@ virtualList(cards, {
   direction: 'horizontal',
   overscan: 3,
 });
+```
+
+### Context
+`context(defaultValue)`:
+- Shares reactive state across a component tree without prop drilling.
+- `scope(value?)` creates a provider level with `.get()`, `.set()`, path access, and `.serve(renderable)`.
+- `state()` returns a reactive state bound to the nearest ancestor provider.
+- Supports nesting: inner scopes override outer ones without affecting siblings.
+- Works with dynamic children (`list()`, `when()`) via mount-time resolution.
+Context gives you React-like sharing without React-like complexity. No Provider JSX, no useContext — just state that flows.
+
+Example:
+```js
+import { context, Div, Text, after } from 'granular'
+
+const themeCtx = context('light')
+
+const ThemeProvider = (...children) => {
+  const theme = themeCtx.scope('dark')
+  return theme.serve(Div(...children))
+}
+
+const ThemedCard = () => {
+  const theme = themeCtx.state()
+  return Div(
+    { className: after(theme).compute(t => `card card-${t}`) },
+    Text('Current theme: ', theme)
+  )
+}
+
+// Usage
+ThemeProvider(ThemedCard())
+```
+
+Provider controls its own state:
+```js
+const sizeCtx = context([])
+
+const Table = (...children) => {
+  const sizes = sizeCtx.scope(['1fr', '2fr', 'auto'])
+  // sizes.get(), sizes.set(), sizes[0] — full state API
+  return sizes.serve(Div(...children))
+}
+
+const Row = () => {
+  const sizes = sizeCtx.state()
+  // sizes is reactive, bound to the nearest Table's scope
+  return Div({ style: { gridTemplateColumns: after(sizes).compute(s => s.join(' ')) } })
+}
 ```
 
 ### State as Store

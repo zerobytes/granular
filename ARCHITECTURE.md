@@ -40,6 +40,7 @@ Public exports (via `src/core/runtime.js`):
 - `QueryClient`
 - `EventHub`
 - `Router`, `createRouter`, `router`
+- `context`
 - `ErrorBoundary`
 - `Elements`
 - `WebSocketClient`, `createWebSocket`
@@ -265,6 +266,40 @@ Router emits route events directly on Page via `before/after`.
 - Updates are targeted by binding anchors, not full re-render.
 - Observable arrays update only affected list segments.
 - Guards run before any Page instantiation.
+
+## Context
+
+Module: `src/core/context.js`
+
+Shares reactive state across a component tree without prop drilling. Designed for Granular's "run once" component model where children construct bottom-up but mount top-down.
+
+### API
+
+`context(defaultValue)` returns `{ scope, state }`:
+- `scope(value?)` — creates a new provider level. Returns a state-like object with `.get()`, `.set()`, path access, and `.serve(renderable)` to wrap children.
+- `state()` — returns a reactive state bound to the nearest ancestor provider.
+
+### Core Design
+
+The context system handles two timing phases:
+
+1. **Construction-time capture**: children construct before parents. When a child calls `ctx.state()`, a consumer is pushed to a pending queue. When the parent calls `scope.serve(renderable)`, it drains the pending queue and wraps the renderable in a `ContextProvider`.
+
+2. **Mount-time sync**: at mount, `ContextProvider` connects each captured consumer to the provider signal. For dynamic children (e.g., inside `list()` or `when()`), a mount stack is used — consumers created during mount connect immediately to the active provider.
+
+### Internals
+
+- `ContextProvider` extends `Renderable`. It manages consumer connections during mount/unmount and SSR (`renderToString`).
+- `createContextConsumer(defaultValue)` creates a consumer with a local signal (fallback) and an adapter that delegates to either the provider signal (when connected) or the local signal.
+- `scope()` wraps the provider state in a `Proxy` that injects a `.serve()` method alongside the standard state API.
+
+### Nesting
+
+Multiple `scope()` calls on the same context create independent provider levels. Children resolve to the nearest ancestor provider. A scope can override its parent's value without affecting siblings at the same level.
+
+### SSR
+
+`ContextProvider.renderToString(render)` connects consumers and pushes to the mount stack before rendering, ensuring server-side context resolution follows the same rules as client-side.
 
 ## Current Gaps / Future Modules
 
