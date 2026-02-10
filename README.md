@@ -172,8 +172,30 @@ Your component runs once. The DOM updates forever. That is the whole point.
 - `state` provides proxy paths with `.get()` / `.set()` and read‑only bindings.
 - Direct mutation of state paths is forbidden (`s.user = ...` throws).
 - `mutate(optimistic, mutation, options?)` supports optimistic updates with rollback.
-- `subscribe(state, selector)` returns a derived, state‑like value.
+- `subscribe(target, selector?, listener?, equalityFn?)` subscribes to a reactive target with optional selector for fine-grained updates.
 You get mutable ergonomics with immutable safety. No spread hell, no guesswork.
+
+### Resolve and Computed
+- `resolve(value)` unwraps any reactive value (signal, state, computed, state path) to its raw current value. Non-reactive values pass through unchanged.
+- `computed(input)` transforms a props object into a proxy where each property becomes a read-only computed state. Accepts signals, state, or plain objects.
+
+### Concat
+`concat(...parts, options)`:
+- Joins primitives and reactive values into a single reactive string.
+- Supports conditional tuples: `[state, 'class-name']`.
+- Options: `separator`, `filterFalsy`.
+
+### Type Guards
+- `isSignal(value)` — true if value is a signal.
+- `isState(value)` — true if value is a state root.
+- `isStatePath(value)` — true if value is a state path (e.g., `user.name`).
+- `isComputed(value)` — true if value is a computed state.
+
+### Low-level Signal API
+`readSignal(sig)` and `setSignal(sig, next, force?)`:
+- Direct read/write access to a signal's value.
+- `setSignal` with `force = true` fires subscribers even when the value is unchanged.
+- Exported for library/advanced use (e.g., custom renderables, context adapters). Prefer `state()` for application code.
 
 ### Reactive Observers
 `after(...targets)` / `before(...targets)`:

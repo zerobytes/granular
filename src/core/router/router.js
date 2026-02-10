@@ -1,4 +1,4 @@
-import { createComment, clearBetween } from '../dom/dom.js';
+import { createAnchor } from '../dom/dom.js';
 import { Renderer } from '../renderable/renderer.js';
 import { state } from '../reactivity/state.js';
 import { after } from '../reactivity/observe.js';
@@ -143,8 +143,7 @@ export class Router {
   #routeSeq = 0;
   #options;
   #mountParent = null;
-  #mountStart = null;
-  #mountEnd = null;
+  #mountAnchor = null;
   #current = null;
   #listening = false;
   #navToken = 0;
@@ -259,10 +258,8 @@ export class Router {
     if (!el) throw new Error('Router.mount: target not found');
     if (this.#mountParent) return;
     this.#mountParent = el;
-    this.#mountStart = createComment('zb:route:start', 'router');
-    this.#mountEnd = createComment('zb:route:end', 'router');
-    el.appendChild(this.#mountStart);
-    el.appendChild(this.#mountEnd);
+    this.#mountAnchor = createAnchor('router');
+    el.appendChild(this.#mountAnchor);
     this.start();
   }
 
@@ -272,13 +269,10 @@ export class Router {
       this.#teardownCurrent();
       this.#current = null;
     }
-    if (this.#mountStart && this.#mountEnd) {
-      clearBetween(this.#mountStart, this.#mountEnd);
-      this.#mountStart.remove();
-      this.#mountEnd.remove();
+    if (this.#mountAnchor) {
+      this.#mountAnchor.remove();
+      this.#mountAnchor = null;
     }
-    this.#mountStart = null;
-    this.#mountEnd = null;
     this.#mountParent = null;
   }
 
@@ -510,7 +504,7 @@ export class Router {
   }
 
   async #handleLocationChange({ source, redirectChain } = {}) {
-    if (!this.#mountParent || !this.#mountStart || !this.#mountEnd) return;
+    if (!this.#mountParent || !this.#mountAnchor) return;
     const token = ++this.#navToken;
     const loc = this.#readLocation();
     const chain = redirectChain || new Set();
@@ -714,13 +708,22 @@ export class Router {
     
     const rootRenderable = this.#buildLayoutTree(page, ctx);
     const mountedValues = Renderer.normalize(rootRenderable);
+    const marker = document.createTextNode('');
+    this.#mountParent.insertBefore(marker, this.#mountAnchor);
     for (const r of mountedValues) {
       if (Renderer.isRenderable(r)) {
-        r.mountInto(this.#mountParent, this.#mountEnd);
+        r.mountInto(this.#mountParent, this.#mountAnchor);
       } else if (Renderer.isDomNode(r)) {
-        this.#mountEnd.parentNode.insertBefore(r, this.#mountEnd);
+        this.#mountParent.insertBefore(r, this.#mountAnchor);
       }
     }
+    const mountedNodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== this.#mountAnchor) {
+      mountedNodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
     
     page.emitAfter?.('routeEnter', ctx, { router: this, page });
 
@@ -731,6 +734,7 @@ export class Router {
       chain: ctx.chain,
       page,
       mounted: mountedValues,
+      mountedNodes,
       params: ctx.params,
       query: ctx.query,
       location: ctx.location,
@@ -786,6 +790,9 @@ export class Router {
     if (!current) return;
     if (Array.isArray(current.mounted)) {
       for (const r of current.mounted) Renderer.unmount(r);
+    }
+    if (Array.isArray(current.mountedNodes)) {
+      for (const n of current.mountedNodes) if (n.parentNode) n.remove();
     }
   }
 

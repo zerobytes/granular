@@ -1,5 +1,5 @@
-const SIGNAL = Symbol('zb.signal');
-const SIGNAL_MAP = Symbol('zb.signal.map');
+const SIGNAL = Symbol('g.signal');
+const SIGNAL_MAP = Symbol('g.signal.map');
 
 function isObject(value) {
   return value !== null && typeof value === 'object';

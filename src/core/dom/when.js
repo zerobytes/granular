@@ -1,10 +1,10 @@
 import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
-import { createComment, clearBetween } from './dom.js';
+import { createAnchor } from './dom.js';
 import { isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
 import { isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
 
-const WHEN = Symbol('zb.when');
+const WHEN = Symbol('g.when');
 
 function isValidAttributeValue(value) {
   if (value == null) return true;
@@ -18,11 +18,11 @@ export class WhenNode extends Renderable {
   #source;
   #renderTrue;
   #renderFalse;
-  #start = null;
-  #end = null;
+  #anchor = null;
   #mounted = false;
   #unsub = null;
   #mountedValues = [];
+  #mountedNodes = [];
 
   constructor(source, renderTrue, renderFalse) {
     super();
@@ -35,10 +35,8 @@ export class WhenNode extends Renderable {
   mountInto(parent, beforeNode) {
     if (this.#mounted) return;
     this.#mounted = true;
-    this.#start = createComment('zb:when:start', 'when');
-    this.#end = createComment('zb:when:end', 'when');
-    parent.insertBefore(this.#start, beforeNode);
-    parent.insertBefore(this.#end, beforeNode);
+    this.#anchor = createAnchor('when');
+    parent.insertBefore(this.#anchor, beforeNode);
 
     this.#update();
     this.#wire();
@@ -50,13 +48,10 @@ export class WhenNode extends Renderable {
     if (this.#unsub) this.#unsub();
     this.#unsub = null;
     this.#cleanup();
-    if (this.#start && this.#end) {
-      clearBetween(this.#start, this.#end);
-      this.#start.remove();
-      this.#end.remove();
+    if (this.#anchor) {
+      this.#anchor.remove();
+      this.#anchor = null;
     }
-    this.#start = null;
-    this.#end = null;
   }
 
   #wire() {
@@ -96,7 +91,8 @@ export class WhenNode extends Renderable {
   #cleanup() {
     for (const r of this.#mountedValues) Renderer.unmount(r);
     this.#mountedValues = [];
-    if (this.#start && this.#end) clearBetween(this.#start, this.#end);
+    for (const n of this.#mountedNodes) if (n.parentNode) n.remove();
+    this.#mountedNodes = [];
   }
 
   #update() {
@@ -105,13 +101,27 @@ export class WhenNode extends Renderable {
     const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
     const values = Renderer.normalize(value);
     this.#mountedValues = values;
+
+    const parent = this.#anchor.parentNode;
+    const marker = document.createTextNode('');
+    parent.insertBefore(marker, this.#anchor);
+
     for (const r of values) {
       if (Renderer.isRenderable(r)) {
-        r.mountInto(this.#end.parentNode, this.#end);
+        r.mountInto(parent, this.#anchor);
       } else if (Renderer.isDomNode(r)) {
-        this.#end.parentNode.insertBefore(r, this.#end);
+        parent.insertBefore(r, this.#anchor);
       }
     }
+
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== this.#anchor) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+    this.#mountedNodes = nodes;
   }
 
   renderToString(render) {

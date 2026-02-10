@@ -1,5 +1,5 @@
 export const INTERNAL = Object.freeze({
-  instrumentBoundProp: Symbol('zb.instrumentBoundProp'),
-  subscribeProp: Symbol('zb.subscribeProp'),
+  instrumentBoundProp: Symbol('g.instrumentBoundProp'),
+  subscribeProp: Symbol('g.subscribeProp'),
 });
 

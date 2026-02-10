@@ -26,8 +26,13 @@ Entry point: `src/index.js`
 Public exports (via `src/core/runtime.js`):
 - `bootstrap`
 - `component`
-- `signal`, `state`, `after`, `before`, `set`, `persist`, `subscribe`
+- `signal`, `isSignal`, `setSignal`, `readSignal`
+- `state`, `isState`, `isStatePath`, `isComputed`
+- `after`, `before`, `set`, `subscribe`
+- `resolve`
+- `computed`
 - `concat`
+- `persist`
 - `form`
 - `Renderable`
 - `Renderer`
@@ -177,18 +182,43 @@ Module: `src/core/component/function-component.js`
 
 ## Reactivity
 
+### Signal Primitives
+Module: `src/core/reactivity/signal.js`
+
+- `signal(value)` creates a low-level observable value with `get()`, `set()`, `subscribe()`, and `before()`.
+- `readSignal(sig)` reads the current value of a signal.
+- `setSignal(sig, next, force?)` sets the signal value. When `force` is true, fires subscribers even if the value is unchanged.
+- `isSignal(value)` returns true if the value is a signal.
+- These are low-level primitives; prefer `state()` for application code. Exported for library/advanced use cases (e.g., building custom renderables, context adapters).
+
 ### State and Observers
 Module: `src/core/reactivity/state.js` and `src/core/reactivity/observe.js`
 
 - `state(value)` creates an observable state with `get()` and `set()`.
+- `isState(value)`, `isStatePath(value)`, `isComputed(value)` are runtime type guards for distinguishing reactive types.
 - `after(...x).change(fn)` and `before(...x).change(fn)` listen to changes.
 - `change(fn)` receives `(next, prev, ctx)`.
 - For arrays, `next`/`prev` are lazy and `ctx.patch` carries change details.
 - `after(...x).compute(fn)` and `before(...x).compute(fn)` return a read‑only, state‑like computed value.
 - `compute(fn, options)` supports debounce, hash, equals, onError.
 - `set(x, value)` updates state or observable arrays.
+- `subscribe(target, selector?, listener?, equalityFn?)` low-level subscription with optional selector for fine-grained updates. Returns an unsubscribe function.
 - `persist(state, options)` hydrates and saves to storage.
-- `concat(...parts, options)` joins primitives and reactive values into a single string.
+
+### Resolve
+Module: `src/core/reactivity/resolve.js`
+
+- `resolve(value)` unwraps reactive values (signal, state, computed, state path) to their raw current value. Returns non-reactive values as-is.
+
+### Computed
+Module: `src/core/reactivity/computed.js`
+
+- `computed(input)` transforms a props object into a proxy where each property becomes a read-only computed state. If given a signal/state directly, returns a computed mirror.
+
+### Concat
+Module: `src/core/reactivity/concat.js`
+
+- `concat(...parts, options)` joins primitives and reactive values into a single reactive string. Supports conditional tuples and custom separator/filter options.
 
 ## Stores
 
