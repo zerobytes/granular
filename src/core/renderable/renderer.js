@@ -1,6 +1,85 @@
 import { Renderable } from './renderable.js';
+import { createAnchor } from '../dom/dom.js';
 import { isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
 import { isState, isStatePath, isComputed, readState, subscribeState } from '../reactivity/state.js';
+
+function readReactive(value) {
+  if (isState(value) || isStatePath(value) || isComputed(value)) return readState(value);
+  if (isSignal(value)) return readSignal(value);
+  return value;
+}
+
+function subscribeReactive(value, cb) {
+  if (isState(value) || isStatePath(value) || isComputed(value)) return subscribeState(value, cb);
+  if (isSignal(value)) return subscribeSignal(value, cb);
+  return null;
+}
+
+class ReactiveSlotNode extends Renderable {
+  #source;
+  #anchor = null;
+  #parent = null;
+  #mounted = false;
+  #unsub = null;
+  #current = [];
+
+  constructor(source) {
+    super();
+    this.#source = source;
+  }
+
+  mountInto(parent, beforeNode) {
+    if (this.#mounted) return;
+    this.#mounted = true;
+    this.#anchor = createAnchor('slot');
+    parent.insertBefore(this.#anchor, beforeNode);
+    this.#parent = parent;
+    this.#update();
+    this.#unsub = subscribeReactive(this.#source, () => this.#update());
+  }
+
+  #update() {
+    for (const { renderables, nodes } of this.#current) {
+      for (const r of renderables) Renderer.unmount(r);
+      for (const n of nodes) if (n.parentNode) n.remove();
+    }
+    this.#current = [];
+    const value = readReactive(this.#source);
+    const renderables = Renderer.normalize(value);
+    const marker = document.createTextNode('');
+    this.#parent.insertBefore(marker, this.#anchor);
+    for (const r of renderables) {
+      if (Renderer.isRenderable(r)) {
+        r.mountInto(this.#parent, this.#anchor);
+      } else if (Renderer.isDomNode(r)) {
+        this.#parent.insertBefore(r, this.#anchor);
+      }
+    }
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== this.#anchor) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+    this.#current = [{ renderables, nodes }];
+  }
+
+  unmount() {
+    if (!this.#mounted) return;
+    this.#mounted = false;
+    if (this.#unsub) this.#unsub();
+    this.#unsub = null;
+    for (const { renderables, nodes } of this.#current) {
+      for (const r of renderables) Renderer.unmount(r);
+      for (const n of nodes) if (n.parentNode) n.remove();
+    }
+    this.#current = [];
+    if (this.#anchor?.parentNode) this.#anchor.remove();
+    this.#anchor = null;
+    this.#parent = null;
+  }
+}
 
 class ReactiveTextNode extends Renderable {
   #source;
@@ -102,7 +181,8 @@ export class Renderer {
    * Normalizes a value into a flat list of renderables:
    * - Renderable instances
    * - DOM Nodes
-   * - ReactiveTextNode for reactive values (state, signal, statePath, computed)
+   * - ReactiveSlotNode when reactive value resolves to Renderable/DOM/array (uses render pipeline)
+   * - ReactiveTextNode when reactive value is primitive (text)
    * - TextNodes created from primitives/objects
    *
    * @param {unknown} value
@@ -112,7 +192,14 @@ export class Renderer {
     if (value == null || value === false) return [];
     if (Array.isArray(value)) return value.flatMap((v) => Renderer.normalize(v));
     if (Renderer.isRenderable(value) || Renderer.isDomNode(value)) return /** @type {(Renderable|Node)[]} */ ([value]);
-    if (isSignal(value) || isState(value) || isStatePath(value) || isComputed(value)) return [new ReactiveTextNode(value)];
+    if (isSignal(value) || isState(value) || isStatePath(value) || isComputed(value)) {
+      const unwrapped = readReactive(value);
+      const isComplex = unwrapped != null && typeof unwrapped === 'object' &&
+        (Renderer.isRenderable(unwrapped) || Renderer.isDomNode(unwrapped) || Array.isArray(unwrapped) ||
+          isSignal(unwrapped) || isState(unwrapped) || isStatePath(unwrapped) || isComputed(unwrapped));
+      if (isComplex) return [new ReactiveSlotNode(value)];
+      return [new ReactiveTextNode(value)];
+    }
     return [document.createTextNode(Renderer.toText(value))];
   }
 

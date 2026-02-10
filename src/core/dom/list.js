@@ -67,8 +67,10 @@ export class ListNode extends Renderable {
           return;
         }
         if (patch.type === 'insert') {
-          for (let i = 0; i < patch.items.length; i++) {
-            this.#insert(patch.index + i, patch.items[i]);
+          if (patch.items.length > 1) {
+            this.#insertBatch(patch.index, patch.items);
+          } else if (patch.items.length === 1) {
+            this.#insert(patch.index, patch.items[0]);
           }
           this.#updateIndices(patch.index + patch.items.length);
           return;
@@ -115,6 +117,13 @@ export class ListNode extends Renderable {
   }
 
   #reset(items) {
+    if (items.length === this.#itemRefs.length) {
+      for (let i = 0; i < items.length; i++) {
+        const ref = this.#itemRefs[i];
+        if (ref?.state) ref.state.set(items[i]);
+      }
+      return;
+    }
     this.#cleanup();
     this.#mountAll(items);
   }
@@ -155,6 +164,39 @@ export class ListNode extends Renderable {
     marker.remove();
 
     this.#itemRefs.splice(index, 0, { nodes, renderables, state: itemState, index: indexSignal });
+  }
+
+  #insertBatch(index, items) {
+    const refNode = this.#refNodeAt(index);
+    const parent = this.#anchor.parentNode;
+    const fragment = document.createDocumentFragment();
+    const newRefs = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const idx = index + i;
+      const itemState = state(item);
+      const indexSignal = signal(idx);
+      const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
+      const renderables = Renderer.normalize(rendered);
+
+      const startLen = fragment.childNodes.length;
+      for (const r of renderables) {
+        if (Renderer.isRenderable(r)) {
+          r.mountInto(fragment, null);
+        } else if (Renderer.isDomNode(r)) {
+          fragment.appendChild(r);
+        }
+      }
+      const nodes = [];
+      for (let j = startLen; j < fragment.childNodes.length; j++) {
+        nodes.push(fragment.childNodes[j]);
+      }
+      newRefs.push({ nodes, renderables, state: itemState, index: indexSignal });
+    }
+
+    parent.insertBefore(fragment, refNode);
+    this.#itemRefs.splice(index, 0, ...newRefs);
   }
 
   #remove(index, count) {
