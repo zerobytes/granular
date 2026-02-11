@@ -150,6 +150,9 @@ export class Router {
   #beforeEach = new Set();
   #afterEach = new Set();
   #memory = null;
+  #routeState = null;
+  #layoutOutletState = null;
+  #currentLayoutKey = null;
 
   constructor(options = {}) {
     this.#options = {
@@ -170,6 +173,16 @@ export class Router {
         index: 0,
       };
     }
+    this.#routeState = state(null);
+  }
+
+  #getLayoutChainKey(chain) {
+    if (!chain?.length) return '';
+    return chain.filter((r) => typeof r.layout === 'function').map((r) => r.id).join(',');
+  }
+
+  routeState() {
+    return this.#routeState;
   }
 
   add(pathOrConfig, PageClass, options = {}) {
@@ -705,8 +718,44 @@ export class Router {
     }
 
     page.emitBefore?.('routeEnter', ctx, { router: this, page });
-    
-    const rootRenderable = this.#buildLayoutTree(page, ctx);
+
+    const layoutKey = this.#getLayoutChainKey(ctx.chain);
+    const reuseLayout = layoutKey === this.#currentLayoutKey && this.#layoutOutletState != null;
+
+    if (reuseLayout) {
+      this.#layoutOutletState.set(page);
+      page.emitAfter?.('routeEnter', ctx, { router: this, page });
+      this.#current = {
+        route: ctx.route,
+        chain: ctx.chain,
+        page,
+        mounted: prev?.mounted ?? [],
+        mountedNodes: prev?.mountedNodes ?? [],
+        params: ctx.params,
+        query: ctx.query,
+        location: ctx.location,
+        data: ctx.data,
+        routeData: ctx.routeData,
+      };
+      this.#routeState.set({
+        route: ctx.route,
+        chain: ctx.chain,
+        params: ctx.params,
+        query: ctx.query,
+        location: ctx.location,
+        page,
+      });
+      for (const fn of this.#afterEach) fn({ ...ctx, page });
+      this.#applyScrollRestoration(ctx);
+      return;
+    }
+
+    if (prev) this.#teardownCurrent();
+
+    const { tree: rootRenderable, outletState } = this.#buildLayoutTree(page, ctx);
+    this.#layoutOutletState = outletState;
+    this.#currentLayoutKey = layoutKey;
+
     const mountedValues = Renderer.normalize(rootRenderable);
     const marker = document.createTextNode('');
     this.#mountParent.insertBefore(marker, this.#mountAnchor);
@@ -724,10 +773,8 @@ export class Router {
       cur = cur.nextSibling;
     }
     marker.remove();
-    
-    page.emitAfter?.('routeEnter', ctx, { router: this, page });
 
-    if (prev) this.#teardownCurrent();
+    page.emitAfter?.('routeEnter', ctx, { router: this, page });
 
     this.#current = {
       route: ctx.route,
@@ -741,6 +788,15 @@ export class Router {
       data: ctx.data,
       routeData: ctx.routeData,
     };
+
+    this.#routeState.set({
+      route: ctx.route,
+      chain: ctx.chain,
+      params: ctx.params,
+      query: ctx.query,
+      location: ctx.location,
+      page,
+    });
 
     for (const fn of this.#afterEach) fn({ ...ctx, page });
     this.#applyScrollRestoration(ctx);
@@ -761,6 +817,14 @@ export class Router {
     current.page.state = ctx.state;
     current.page.emitBefore?.('routeUpdate', ctx, { router: this, page: current.page });
     current.page.emitAfter?.('routeUpdate', ctx, { router: this, page: current.page });
+    this.#routeState.set({
+      route: ctx.route,
+      chain: ctx.chain,
+      params: ctx.params,
+      query: ctx.query,
+      location: ctx.location,
+      page: current.page,
+    });
     for (const fn of this.#afterEach) fn({ ...ctx, page: current.page });
     this.#applyScrollRestoration(ctx);
   }
@@ -794,18 +858,25 @@ export class Router {
     if (Array.isArray(current.mountedNodes)) {
       for (const n of current.mountedNodes) if (n.parentNode) n.remove();
     }
+    this.#layoutOutletState = null;
+    this.#currentLayoutKey = null;
   }
 
   #buildLayoutTree(page, ctx) {
-    let outlet = page;
     const chain = ctx.chain || [];
+    const hasLayout = chain.some((r) => typeof r.layout === 'function');
+    if (!hasLayout) {
+      return { tree: page, outletState: null };
+    }
+    const outletState = state(page);
+    let tree = outletState;
     for (let i = chain.length - 1; i >= 0; i--) {
       const route = chain[i];
       if (typeof route.layout === 'function') {
-        outlet = route.layout(outlet, { ...ctx, route });
+        tree = route.layout(tree, { ...ctx, route });
       }
     }
-    return outlet;
+    return { tree, outletState };
   }
 
   async #redirectTo(target, redirectChain) {
