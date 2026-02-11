@@ -1,6 +1,7 @@
 export function createRouter(options: any): Router;
 export class Router {
     constructor(options?: {});
+    routeState(): any;
     add(pathOrConfig: any, PageClass: any, options?: {}): {
         id: string;
         name: any;
