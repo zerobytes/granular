@@ -3,6 +3,8 @@
 Granular is a JS-first frontend framework built for performance, clarity, and real control.
 No template DSL, no VDOM, no magic compile step — just explicit reactivity and direct DOM updates.
 
+For those of you tired of being "markup organizers", tired of fighthing against re-render mess, tired of 1GB of node_modules to make a 500kb application, layers and layers of compilation, no control over the end result of your code, Granular brings coding to the engineering level again. Code looks like code on Granular, and when you look at the code you just know what will happen. No need to figure out a one hundred steps "lifecycle". 
+
 If your UI should be fast **and** your code should still look like code, this is for you.
 
 [<img width="938" height="361" alt="image" src="https://github.com/user-attachments/assets/774acd00-f11b-4aa8-b502-af90fc3a8436" />](http://granular.web.app/)
@@ -60,11 +62,8 @@ const App = () => {
 
   const doubled = after(counter).compute((value) => value * 2);
 
-  return Div(
-    { style: { fontSize: 20 } },
-    Span(counter),
-    Span(' x2 = '),
-    Span(doubled),
+  return Div({ style: { fontSize: 20 } },
+    Span(counter, ' x2 = ', doubled),
     Button({ onClick: () => counter.set(counter.get() + 1) }, 'Increment')
   );
 };
