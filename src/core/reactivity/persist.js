@@ -1,3 +1,4 @@
+import { isObservableArray } from '../collections/observable-array.js';
 import { isState, isStatePath, readState, setStateValue } from './state.js';
 import { after } from './observe.js';
 
@@ -68,6 +69,7 @@ function defaultDeserialize(text) {
 
 function readSnapshot(target, pathList) {
   if (isStateLike(target)) return pickPaths(readState(target), pathList);
+  if (isObservableArray(target)) return pickPaths(target.slice(), pathList);
   if (isStoreLike(target)) return pickPaths(target.getState(), pathList);
   throw new Error('persist(target): unsupported target');
 }
@@ -75,6 +77,10 @@ function readSnapshot(target, pathList) {
 function applySnapshot(target, snapshot) {
   if (isStateLike(target)) {
     setStateValue(target, snapshot);
+    return;
+  }
+  if (isObservableArray(target)) {
+    target.reset(Array.isArray(snapshot) ? snapshot : []);
     return;
   }
   if (isStoreLike(target)) {
@@ -86,6 +92,7 @@ function applySnapshot(target, snapshot) {
 
 function subscribeChanges(target, fn) {
   if (isStateLike(target)) return after(target).change(fn);
+  if (isObservableArray(target)) return after(target).change(fn);
   if (isStoreLike(target)) return target.subscribe(fn);
   throw new Error('persist(target): unsupported target');
 }
@@ -112,34 +119,35 @@ export function persist(target, options = {}) {
   const reconcile = options.reconcile || null;
   const throttleMs = Math.max(0, options.throttle ?? 0);
 
-  if (storage) {
-    const raw = storage.getItem(key);
-    if (raw != null) {
-      let payload = null;
-      try {
-        payload = deserialize(raw);
-      } catch {
-        payload = null;
+  if (!storage) throw new Error('persist(target): no storage available');
+
+  const raw = storage.getItem(key);
+  if (raw != null) {
+    let payload = null;
+    try {
+      payload = deserialize(raw);
+    } catch {
+      payload = null;
+    }
+    if (payload != null) {
+      let data = payload;
+      let v = null;
+      if (payload && typeof payload === 'object' && 'data' in payload && 'v' in payload) {
+        data = payload.data;
+        v = payload.v;
       }
-      if (payload != null) {
-        let data = payload;
-        let v = null;
-        if (payload && typeof payload === 'object' && 'data' in payload && 'v' in payload) {
-          data = payload.data;
-          v = payload.v;
-        }
-        if (v != null && v !== version && typeof migrate === 'function') {
-          data = migrate(data, v);
-        }
-        if (typeof reconcile === 'function') {
-          data = reconcile(data);
-        }
-        if (data !== undefined) {
-          applySnapshot(target, data);
-        }
+      if (v != null && v !== version && typeof migrate === 'function') {
+        data = migrate(data, v);
+      }
+      if (typeof reconcile === 'function') {
+        data = reconcile(data);
+      }
+      if (data !== undefined) {
+        applySnapshot(target, data);
       }
     }
   }
+
 
   let scheduled = false;
   let lastTimer = null;
@@ -154,6 +162,10 @@ export function persist(target, options = {}) {
       return;
     }
   };
+
+  if(!raw){
+    write();
+  }
 
   const scheduleWrite = () => {
     if (!storage) return;
