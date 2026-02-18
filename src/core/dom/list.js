@@ -12,6 +12,7 @@ export class ListNode extends Renderable {
   #mounted = false;
   #unsub = null;
   #itemRefs = [];
+  nodeType = 'granular-list-node'
 
   constructor(items, renderItem) {
     super();

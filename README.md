@@ -7,6 +7,8 @@ For those of you tired of being "markup organizers", tired of fighthing against 
 
 If your UI should be fast **and** your code should still look like code, this is for you.
 
+**For AI coding assistants:** In this repo, for full API and patterns, see **[GRANULAR_AI_GUIDE.md](GRANULAR_AI_GUIDE.md)** and [ARCHITECTURE.md](ARCHITECTURE.md).
+
 [<img width="938" height="361" alt="image" src="https://github.com/user-attachments/assets/774acd00-f11b-4aa8-b502-af90fc3a8436" />](http://granular.web.app/)
 
 
