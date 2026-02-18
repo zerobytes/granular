@@ -4,6 +4,7 @@ import { isObservableArray } from '../collections/observable-array.js';
 import { createAnchor } from './dom.js';
 import { signal, setSignal, isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
 import { state, isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
+import { after } from '../reactivity/observe.js';
 
 export class ListNode extends Renderable {
   #items;
@@ -111,10 +112,21 @@ export class ListNode extends Renderable {
 
   #cleanup() {
     for (const it of this.#itemRefs) {
+      if (it.syncUnsub) it.syncUnsub();
       for (const r of it.renderables) Renderer.unmount(r);
       for (const n of it.nodes) if (n.parentNode) n.remove();
     }
     this.#itemRefs = [];
+  }
+
+  #wireSyncToObservableArray(ref) {
+    if (!isObservableArray(this.#items)) return;
+    ref.syncUnsub = after(ref.state).change((next) => {
+      const i = readSignal(ref.index);
+      if (this.#itemRefs[i] !== ref) return;
+      if (this.#items[i] === next) return;
+      this.#items[i] = next;
+    });
   }
 
   #reset(items) {
@@ -164,7 +176,9 @@ export class ListNode extends Renderable {
     }
     marker.remove();
 
-    this.#itemRefs.splice(index, 0, { nodes, renderables, state: itemState, index: indexSignal });
+    const ref = { nodes, renderables, state: itemState, index: indexSignal };
+    this.#itemRefs.splice(index, 0, ref);
+    this.#wireSyncToObservableArray(ref);
   }
 
   #insertBatch(index, items) {
@@ -198,11 +212,13 @@ export class ListNode extends Renderable {
 
     parent.insertBefore(fragment, refNode);
     this.#itemRefs.splice(index, 0, ...newRefs);
+    for (const ref of newRefs) this.#wireSyncToObservableArray(ref);
   }
 
   #remove(index, count) {
     const removed = this.#itemRefs.splice(index, count);
     for (const it of removed) {
+      if (it.syncUnsub) it.syncUnsub();
       for (const r of it.renderables) Renderer.unmount(r);
       for (const n of it.nodes) if (n.parentNode) n.remove();
     }
