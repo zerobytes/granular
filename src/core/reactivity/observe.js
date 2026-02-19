@@ -1,5 +1,6 @@
 import { isSignal, readSignal, subscribeSignal, setSignal, signal } from './signal.js';
 import { isObservableArray } from '../collections/observable-array.js';
+import { INTERNAL } from '../internal/symbols.js';
 import { createStateFromAdapter, isState, isStatePath, readState, readStateFromRoot, subscribeState, setStateValue } from './state.js';
 
 function freezeValue(value) {
@@ -147,16 +148,41 @@ function valueForTarget(target) {
   return readTargetValue(target);
 }
 
-export function after(...targets) {
+export function capture({ name, subscription }, ...targets) {
   const list = normalizeTargets(targets);
+
   if (!list.length) {
-    throw new Error('after(...targets): at least one target is required');
+    throw new Error(`${name}(...targets): at least one target is required`);
   }
+
+  const isSingleTarget = list.length === 1;
+
   return {
     change(fn) {
-      const unsubs = list.map((target) =>
-        subscribeAfterTarget(target, (next, prev, ctx) => fn(next, prev, ctx))
-      );
+      const unsubs = list.map((target, index) => {
+        let lastValue = INTERNAL.noValue;
+        return subscription(target, (next, prev, ctx) => {
+          const values = { next: [], prev: [], ctx: [] }
+          list.map((target, index2) => {
+            if (index2 === index) {
+              values.next[index2] = next;
+              values.prev[index2] = prev;
+              values.ctx[index2] = ctx;
+              return;
+            }
+            if (lastValue === INTERNAL.noValue) {
+              lastValue = valueForTarget(target);
+            }
+            values.next[index2] = lastValue;
+            values.prev[index2] = lastValue;
+            values.ctx[index2] = null;
+          })
+          if (isSingleTarget) {
+            return fn(values.next[0], values.prev[0], values.ctx[0])
+          }
+          return fn(values.next, values.prev, values.ctx)
+        })
+      });
       return () => {
         for (const unsub of unsubs) {
           if (typeof unsub === 'function') unsub();
@@ -167,7 +193,7 @@ export function after(...targets) {
       const { value, setValue } = createComputedState();
       let runId = 0;
       let lastHash = undefined;
-      let lastValue = undefined;
+      let lastComputedValue = undefined;
       let scheduled = null;
       let disposed = false;
       let lastValues = list.map(valueForTarget);
@@ -184,11 +210,12 @@ export function after(...targets) {
       const computeNow = (nextValues, prevValues, ctxs) => {
         if (disposed) return;
         const current = ++runId;
-        const args = nextValues;
         if (typeof options.hash === 'function') {
           let nextHash = undefined;
           try {
-            nextHash = list.length === 1 ? options.hash(args[0], prevValues[0], ctxs[0]) : options.hash(args, prevValues, ctxs);
+            nextHash = isSingleTarget
+              ? options.hash(nextValues[0], prevValues[0], ctxs[0])
+              : options.hash(nextValues, prevValues, ctxs);
           } catch (err) {
             handleError(err);
             return;
@@ -198,24 +225,24 @@ export function after(...targets) {
         }
         let result;
         try {
-          result = list.length === 1 ? fn(args[0], prevValues[0], ctxs[0]) : fn(args, prevValues, ctxs);
+          result = isSingleTarget
+            ? fn(nextValues[0], prevValues[0], ctxs[0])
+            : fn(nextValues, prevValues, ctxs);
         } catch (err) {
           handleError(err);
           return;
         }
         if (result && typeof result.then === 'function') {
-          result
-            .then((next) => {
-              if (current !== runId || disposed) return;
-              if (equals(lastValue, next)) return;
-              lastValue = next;
-              setValue(next);
-            })
-            .catch((err) => handleError(err));
+          result.then((next) => {
+            if (current !== runId || disposed) return;
+            if (equals(lastComputedValue, next)) return;
+            lastComputedValue = next;
+            setValue(next);
+          }).catch((err) => handleError(err));
           return;
         }
-        if (equals(lastValue, result)) return;
-        lastValue = result;
+        if (equals(lastComputedValue, result)) return;
+        lastComputedValue = result;
         setValue(result);
       };
       const scheduleRun = (nextValues, prevValues, ctxs) => {
@@ -232,18 +259,24 @@ export function after(...targets) {
         }, delay);
       };
       scheduleRun(lastValues, lastValues, list.map(() => null));
-      const unsubs = list.map((target, index) =>
-        subscribeAfterTarget(target, (next, prev, ctx) => {
-          const nextValues = list.map(valueForTarget);
-          nextValues[index] = next;
-          const prevValues = lastValues.slice();
-          prevValues[index] = prev;
-          lastValues = nextValues;
-          const ctxs = list.map(() => null);
-          ctxs[index] = ctx;
-          scheduleRun(nextValues, prevValues, ctxs);
+      const unsubs = list.map((target, index) => {
+        return subscription(target, (next, prev, ctx) => {
+          const values = { next: [], prev: [], ctx: [] }
+          list.map((target, index2) => {
+            if (index2 === index) {
+              values.next[index2] = next;
+              values.prev[index2] = prev;
+              values.ctx[index2] = ctx;
+              return;
+            }
+            values.next[index2] = valueForTarget(target);
+            values.prev[index2] = lastValues[index2];
+            values.ctx[index2] = null;
+          })
+          lastValues = values.next;
+          scheduleRun(values.next, values.prev, values.ctx);
         })
-      );
+      });
       Object.defineProperty(value, 'dispose', {
         value: () => {
           disposed = true;
@@ -260,120 +293,12 @@ export function after(...targets) {
   };
 }
 
+export function after(...targets) {
+  return capture({ name: 'after', subscription: subscribeAfterTarget }, ...targets);
+}
+
 export function before(...targets) {
-  const list = normalizeTargets(targets);
-  if (!list.length) {
-    throw new Error('before(...targets): at least one target is required');
-  }
-  return {
-    change(fn) {
-      const unsubs = list.map((target) =>
-        subscribeBeforeTarget(target, (next, prev, ctx) => fn(next, prev, ctx))
-      );
-      return () => {
-        for (const unsub of unsubs) {
-          if (typeof unsub === 'function') unsub();
-        }
-      };
-    },
-    compute(fn, options = {}) {
-      const { value, setValue } = createComputedState();
-      let runId = 0;
-      let lastHash = undefined;
-      let lastValue = undefined;
-      let scheduled = null;
-      let disposed = false;
-      const equals = typeof options.equals === 'function' ? options.equals : Object.is;
-      const handleError = (err) => {
-        if (typeof options.onError === 'function') {
-          options.onError(err);
-          return;
-        }
-        if (typeof console !== 'undefined' && typeof console.error === 'function') {
-          console.error(err);
-        }
-      };
-      const computeNow = (nextValues, prevValues, ctxs) => {
-        if (disposed) return;
-        const current = ++runId;
-        if (typeof options.hash === 'function') {
-          let nextHash = undefined;
-          try {
-            nextHash =
-              list.length === 1
-                ? options.hash(nextValues[0], prevValues[0], ctxs[0])
-                : options.hash(nextValues, prevValues, ctxs);
-          } catch (err) {
-            handleError(err);
-            return;
-          }
-          if (nextHash === lastHash) return;
-          lastHash = nextHash;
-        }
-        let result;
-        try {
-          result =
-            list.length === 1
-              ? fn(nextValues[0], prevValues[0], ctxs[0])
-              : fn(nextValues, prevValues, ctxs);
-        } catch (err) {
-          handleError(err);
-          return;
-        }
-        if (result && typeof result.then === 'function') {
-          result
-            .then((next) => {
-              if (current !== runId || disposed) return;
-              if (equals(lastValue, next)) return;
-              lastValue = next;
-              setValue(next);
-            })
-            .catch((err) => handleError(err));
-          return;
-        }
-        if (equals(lastValue, result)) return;
-        lastValue = result;
-        setValue(result);
-      };
-      const scheduleRun = (nextValues, prevValues, ctxs) => {
-        if (disposed) return;
-        const delay = Math.max(0, options.debounce ?? 0);
-        if (!delay) {
-          computeNow(nextValues, prevValues, ctxs);
-          return;
-        }
-        if (scheduled) clearTimeout(scheduled);
-        scheduled = setTimeout(() => {
-          scheduled = null;
-          computeNow(nextValues, prevValues, ctxs);
-        }, delay);
-      };
-      const unsubs = list.map((target, index) =>
-        subscribeBeforeTarget(target, (next, prev, ctx) => {
-          const currentValues = list.map(valueForTarget);
-          const nextValues = currentValues.slice();
-          nextValues[index] = next;
-          const prevValues = currentValues.slice();
-          prevValues[index] = prev;
-          const ctxs = list.map(() => null);
-          ctxs[index] = ctx;
-          scheduleRun(nextValues, prevValues, ctxs);
-        })
-      );
-      Object.defineProperty(value, 'dispose', {
-        value: () => {
-          disposed = true;
-          runId++;
-          if (scheduled) clearTimeout(scheduled);
-          for (const unsub of unsubs) {
-            if (typeof unsub === 'function') unsub();
-          }
-        },
-        enumerable: false,
-      });
-      return value;
-    },
-  };
+  return capture({ name: 'before', subscription: subscribeBeforeTarget }, ...targets);
 }
 
 export function set(target, value) {
