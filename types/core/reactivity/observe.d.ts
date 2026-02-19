@@ -1,3 +1,10 @@
+export function capture({ name, subscription }: {
+    name: any;
+    subscription: any;
+}, ...targets: any[]): {
+    change(fn: any): () => void;
+    compute(fn: any, options?: {}): {};
+};
 export function after(...targets: any[]): {
     change(fn: any): () => void;
     compute(fn: any, options?: {}): {};
