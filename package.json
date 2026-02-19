@@ -23,10 +23,10 @@
     "build:debug": "npx -y esbuild src/index.js --bundle --sourcemap --format=esm --outfile=./dist/granular.js && npx -y -p typescript@latest tsc -p tsconfig.json",
     "build:watch": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js --watch",
     "version": "npm run build:minify && git add -A",
-    "postversion": "git push && git push --tags"
+    "postversion": "git push && git push origin v$(node -p \"require('./package.json').version\")"
   },
   "author": "Guilherme Ferreira",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/zerobytes/granular.git"
