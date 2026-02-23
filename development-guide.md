@@ -558,7 +558,7 @@ const todos = observableArray([
   { id: 2, text: 'Build app', done: false },
 ]);
 
-// renderItem receives (itemState, indexSignal) — reactive wrappers
+// renderItem receives (itemState, indexSignal) - reactive wrappers
 Ul(
   list(todos, (todo, index) => 
     Li(
@@ -573,10 +573,10 @@ Ul(
   )
 )
 
-// Insert — only adds new DOM nodes
+// Insert - only adds new DOM nodes
 todos.push({ id: 3, text: 'Deploy', done: false });
 
-// Replace item — only bound text nodes update
+// Replace item - only bound text nodes update
 todos[0] = { id: 1, text: 'Master Granular', done: true };
 ```
 
@@ -584,18 +584,18 @@ todos[0] = { id: 1, text: 'Master Granular', done: true };
 
 ```javascript
 list(items, (item, index) => {
-  // REACTIVE — use state paths directly in DOM
+  // REACTIVE - use state paths directly in DOM
   Span(item.name)          // Updates when name changes
   Span(item.status)        // Updates when status changes
 
-  // RAW VALUE — use .get() inside event closures
+  // RAW VALUE - use .get() inside event closures
   onClick: () => doSomething(item.id.get())
   onClick: (e) => handler(index.get(), e)
 
-  // DEFAULTS — use after().compute() (StatePath is always truthy)
+  // DEFAULTS - use after().compute() (StatePath is always truthy)
   after(item.size).compute(s => s || 'md')
 
-  // WRONG — .get() at the top kills reactivity
+  // WRONG - .get() at the top kills reactivity
   const raw = item.get();  // ❌ Static snapshot
   Span(raw.name)           // ❌ Never updates
 });

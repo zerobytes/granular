@@ -3,9 +3,9 @@
  * without prop drilling.
  *
  * Returns { scope, state }:
- * - scope(value?) — creates a new provider level. Returns a state with
+ * - scope(value?) - creates a new provider level. Returns a state with
  *     .get(), .set(), path access, and .serve(renderable) to wrap children.
- * - state() — returns a reactive state bound to the nearest ancestor provider.
+ * - state() - returns a reactive state bound to the nearest ancestor provider.
  *
  * Usage:
  *   const sizeCtx = context([1, 2, 3]);

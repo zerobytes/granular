@@ -546,13 +546,13 @@ const todos = observableArray([
   { id: 2, text: 'Build app', done: false },
 ]);
 
-// renderItem receives (itemState, indexSignal) — both reactive
+// renderItem receives (itemState, indexSignal) - both reactive
 Ul(
   list(todos, (todo, index) => 
     Li(
-      Span(index),           // index is a signal — reactive, auto-updates on insert/remove
+      Span(index),           // index is a signal - reactive, auto-updates on insert/remove
       Span(' - '),
-      Span(todo.text),       // todo.text is a StatePath — reactive binding
+      Span(todo.text),       // todo.text is a StatePath - reactive binding
       Span(after(todo.done).compute(d => d ? ' ✓' : '')),
       Button({
         onClick: () => todo.set().done = !todo.done.get()  // update via state
@@ -561,10 +561,10 @@ Ul(
   )
 )
 
-// Insert — only adds new DOM nodes, existing items untouched
+// Insert - only adds new DOM nodes, existing items untouched
 todos.push({ id: 3, text: 'Deploy', done: false });
 
-// Replace item — only the bound text nodes update, DOM structure stays intact
+// Replace item - only the bound text nodes update, DOM structure stays intact
 todos[0] = { id: 1, text: 'Master Granular', done: true };
 ```
 
@@ -576,18 +576,18 @@ todos[0] = { id: 1, text: 'Master Granular', done: true };
 // - index: signal(number)  → use index for reactive display, index.get() for raw number
 
 list(items, (item, index) => {
-  // REACTIVE — use state paths directly in DOM
+  // REACTIVE - use state paths directly in DOM
   Span(item.name)          // updates when name changes
   Span(item.status)        // updates when status changes
 
-  // RAW VALUE — use .get() inside event closures
+  // RAW VALUE - use .get() inside event closures
   onClick: () => doSomething(item.id.get())
   onClick: (e) => handler(index.get(), e)
 
-  // DEFAULTS — use after().compute() (StatePath is always truthy, can't use ||)
+  // DEFAULTS - use after().compute() (StatePath is always truthy, can't use ||)
   after(item.size).compute(s => s || 'md')
 
-  // WRONG — .get() at the top kills reactivity
+  // WRONG - .get() at the top kills reactivity
   const raw = item.get();  // ❌ Static snapshot, won't react to changes
   Span(raw.name)           // ❌ Just a string, never updates
 });
@@ -602,7 +602,7 @@ Ul(
   list(items, (item, index) => Li(item))  // item is state('a'), reactive
 )
 
-// Update entire array — full reset
+// Update entire array - full reset
 items.set(['x', 'y', 'z']);
 ```
 
@@ -1482,7 +1482,7 @@ list(items, (item) => {
 // CORRECT - use state paths for reactive bindings
 list(items, (item) => {
   return Div(
-    Span(item.name),            // ✅ Reactive — updates when name changes
+    Span(item.name),            // ✅ Reactive - updates when name changes
     Button({
       onClick: () => action(item.id.get())  // ✅ .get() inside closure reads at call time
     }, 'Act')
@@ -1574,7 +1574,7 @@ Input({ value: text, onInput: e => text.set(e.target.value) })
 when(condition, () => TrueCase(), () => FalseCase())
 
 // === LIST ===
-// renderItem receives (itemState, indexSignal) — reactive wrappers
+// renderItem receives (itemState, indexSignal) - reactive wrappers
 list(items, (item, index) => Div(index, ' - ', item.name))
 // item.name is a StatePath (reactive), index is a signal (reactive)
 // Use .get() only in event closures: onClick: () => fn(item.id.get())

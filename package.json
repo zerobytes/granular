@@ -1,7 +1,7 @@
 {
   "name": "@granularjs/core",
   "version": "1.4.0",
-  "description": "JS-first frontend framework with granular reactivity. No Virtual DOM, no build step, no magic — just explicit reactivity and direct DOM updates.",
+  "description": "JS-first frontend framework with granular reactivity. No Virtual DOM, no build step, no magic - just explicit reactivity and direct DOM updates.",
   "type": "module",
   "main": "./dist/granular.min.js",
   "module": "./dist/granular.min.js",

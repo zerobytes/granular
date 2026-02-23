@@ -1,7 +1,7 @@
 # Granular Framework (WIP)
 
 Granular is a JS-first frontend framework built for performance, clarity, and real control.
-No template DSL, no VDOM, no magic compile step — just explicit reactivity and direct DOM updates.
+No template DSL, no VDOM, no magic compile step - just explicit reactivity and direct DOM updates.
 
 For those of you tired of being "markup organizers", tired of fighthing against re-render mess, tired of 1GB of node_modules to make a 500kb application, layers and layers of compilation, no control over the end result of your code, Granular brings coding to the engineering level again. Code looks like code on Granular, and when you look at the code you just know what will happen. No need to figure out a one hundred steps "lifecycle". 
 
@@ -80,7 +80,7 @@ const App = () => {
 - **Fewer moving pieces**: no metaframework, no plugin circus, no “install 738 packages”.
 - **Functional ergonomics**: clean JS with predictable behavior (and no hook rules).
 
-Yes, we are poking the bear — but for a reason. Complexity and over‑abstraction are not features.
+Yes, we are poking the bear - but for a reason. Complexity and over‑abstraction are not features.
 
 ## What’s in the Box
 
@@ -187,10 +187,10 @@ You get mutable ergonomics with immutable safety. No spread hell, no guesswork.
 - Options: `separator`, `filterFalsy`.
 
 ### Type Guards
-- `isSignal(value)` — true if value is a signal.
-- `isState(value)` — true if value is a state root.
-- `isStatePath(value)` — true if value is a state path (e.g., `user.name`).
-- `isComputed(value)` — true if value is a computed state.
+- `isSignal(value)` - true if value is a signal.
+- `isState(value)` - true if value is a state root.
+- `isStatePath(value)` - true if value is a state path (e.g., `user.name`).
+- `isComputed(value)` - true if value is a computed state.
 
 ### Low-level Signal API
 `readSignal(sig)` and `setSignal(sig, next, force?)`:
@@ -206,12 +206,12 @@ You get mutable ergonomics with immutable safety. No spread hell, no guesswork.
 - `before` can cancel by returning `false`.
 - For arrays, `next` and `prev` are **lazy** (`next()` / `prev()`).
 
-**change() — precise change handling**
+**change() - precise change handling**
 - `next` and `prev` are values for signals/state.
 - For arrays, `next`/`prev` are functions to avoid heavy snapshots.
 - `ctx` includes metadata (for arrays: `ctx.patch`, `prevLength`, `nextLength`).
 
-**compute() — derived state with intent**
+**compute() - derived state with intent**
 - Same `next/prev/ctx` contract as `change()`.
 - Supports async, debounce, hash, equality checks, and error handling.
 
@@ -221,17 +221,17 @@ You get mutable ergonomics with immutable safety. No spread hell, no guesswork.
 - `set`: `{ type, index, value, prev }`
 - `reset`: `{ type, items, prevItems }`
 
-**before() — control flow that no other framework has**
+**before() - control flow that no other framework has**
 - Runs *before* the change is committed.
 - Returning `false` cancels the change completely.
 - This is not a hook. It is a guardrail.
 - It lets you enforce business rules, confirm actions, block invalid state, and keep UI clean without hacks.
 - Think of it as an interceptor for state: **the mutation only happens if you allow it**.
 
-**after() — deterministic reactions**
+**after() - deterministic reactions**
 - Runs after the change is applied.
 - Great for side effects, analytics, syncing, or derived updates.
-- No re-render, no virtual tree — just a direct reaction to the exact change.
+- No re-render, no virtual tree - just a direct reaction to the exact change.
 
 ### Computed / Derived State
 `after(...targets).compute(fn, options)` and `before(...targets).compute(fn, options)`:
@@ -256,7 +256,7 @@ Options:
 `list(items, renderItem)`:
 - Efficient list rendering from observable arrays, signals, or state.
 - Each item is wrapped in `state(item)` and each index in `signal(index)`.
-- `renderItem` receives `(itemState, indexSignal)` — reactive wrappers, not raw values.
+- `renderItem` receives `(itemState, indexSignal)` - reactive wrappers, not raw values.
 - On `set` patches, the existing state is updated (`itemState.set(newValue)`), so only the specific DOM nodes bound to changed properties update. No DOM destruction/recreation.
 - Use state paths for reactive bindings: `Span(item.name)` updates only that text node.
 - Use `.get()` inside event closures for raw values: `onClick: () => doSomething(item.id.get())`.
@@ -312,7 +312,7 @@ virtualList(cards, {
 - `state()` returns a reactive state bound to the nearest ancestor provider.
 - Supports nesting: inner scopes override outer ones without affecting siblings.
 - Works with dynamic children (`list()`, `when()`) via mount-time resolution.
-Context gives you React-like sharing without React-like complexity. No Provider JSX, no useContext — just state that flows.
+Context gives you React-like sharing without React-like complexity. No Provider JSX, no useContext - just state that flows.
 
 Example:
 ```js
@@ -343,7 +343,7 @@ const sizeCtx = context([])
 
 const Table = (...children) => {
   const sizes = sizeCtx.scope(['1fr', '2fr', 'auto'])
-  // sizes.get(), sizes.set(), sizes[0] — full state API
+  // sizes.get(), sizes.set(), sizes[0] - full state API
   return sizes.serve(Div(...children))
 }
 

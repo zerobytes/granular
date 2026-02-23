@@ -147,7 +147,7 @@ Module: `src/core/dom/list.js`
 - On `observableArray` patches:
   - `insert`: mounts new items without touching existing DOM.
   - `remove`: unmounts only the removed items.
-  - `set`: calls `itemState.set(newValue)` on the existing state — the reactive system propagates only the changed properties to their bound DOM nodes. No DOM destruction/recreation.
+  - `set`: calls `itemState.set(newValue)` on the existing state - the reactive system propagates only the changed properties to their bound DOM nodes. No DOM destruction/recreation.
   - `reset`: full cleanup and remount.
 - On `state`/`signal` source change: full reset (entire array replaced).
 - Index signals are updated automatically after insert/remove operations.
@@ -321,8 +321,8 @@ Shares reactive state across a component tree without prop drilling. Designed fo
 ### API
 
 `context(defaultValue)` returns `{ scope, state }`:
-- `scope(value?)` — creates a new provider level. Returns a state-like object with `.get()`, `.set()`, path access, and `.serve(renderable)` to wrap children.
-- `state()` — returns a reactive state bound to the nearest ancestor provider.
+- `scope(value?)` - creates a new provider level. Returns a state-like object with `.get()`, `.set()`, path access, and `.serve(renderable)` to wrap children.
+- `state()` - returns a reactive state bound to the nearest ancestor provider.
 
 ### Core Design
 
@@ -330,7 +330,7 @@ The context system handles two timing phases:
 
 1. **Construction-time capture**: children construct before parents. When a child calls `ctx.state()`, a consumer is pushed to a pending queue. When the parent calls `scope.serve(renderable)`, it drains the pending queue and wraps the renderable in a `ContextProvider`.
 
-2. **Mount-time sync**: at mount, `ContextProvider` connects each captured consumer to the provider signal. For dynamic children (e.g., inside `list()` or `when()`), a mount stack is used — consumers created during mount connect immediately to the active provider.
+2. **Mount-time sync**: at mount, `ContextProvider` connects each captured consumer to the provider signal. For dynamic children (e.g., inside `list()` or `when()`), a mount stack is used - consumers created during mount connect immediately to the active provider.
 
 ### Internals
 
