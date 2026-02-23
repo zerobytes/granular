@@ -129,8 +129,10 @@ function createContextConsumer(defaultValue) {
 export function context(defaultValue) {
   const pending = [];
   const mountStack = [];
+  const scopeStartIndices = [];
 
   const scope = (value) => {
+    scopeStartIndices.push(pending.length);
     const providerSignal = signal(value !== undefined ? value : defaultValue);
 
     const adapter = {
@@ -144,7 +146,8 @@ export function context(defaultValue) {
     const providerState = createStateFromAdapter(adapter);
 
     const serve = (renderable) => {
-      const consumers = pending.splice(0, pending.length);
+      const start = scopeStartIndices.pop();
+      const consumers = pending.splice(start, pending.length - start);
       return new ContextProvider(renderable, providerSignal, consumers, mountStack);
     };
 
@@ -162,7 +165,7 @@ export function context(defaultValue) {
       const top = mountStack[mountStack.length - 1];
       consumer._connect(top.signal);
       top.consumers.push(consumer);
-    } else {
+    } else if (scopeStartIndices.length > 0) {
       pending.push(consumer);
     }
     return consumer.state;

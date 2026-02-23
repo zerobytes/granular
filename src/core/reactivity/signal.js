@@ -5,6 +5,7 @@ function isObject(value) {
   return value !== null && typeof value === 'object';
 }
 
+
 export function signal(initial) {
   const state = {
     [SIGNAL]: true,
@@ -16,6 +17,23 @@ export function signal(initial) {
   const notify = (prev) => {
     for (const fn of state.subs) fn(state.value, prev);
   };
+
+  const patchObject = (source, next) => {
+    if (!isObject(next) || Array.isArray(next)) return false;
+    const keys = Object.keys(next);
+    let changed = false;
+    for (const key of keys) {
+      if (isObject(source[key]) && !Array.isArray(source[key])) {
+        if (!source[key]) source[key] = {};
+        patchObject(source[key], next[key]);
+        continue;
+      }
+      if (next[key] === source[key]) continue;
+      source[key] = next[key];
+      changed = true;
+    }
+    return changed;
+  }
 
   const api = {
     get() {
@@ -29,6 +47,25 @@ export function signal(initial) {
         if (res === false) return false;
       }
       state.value = next;
+      notify(prev);
+      return true;
+    },
+    patch(next) {
+      
+      if (!isObject(next) || isArray(next)) {
+        return api.set(next, true);
+      };
+      const prev = state.value;
+      const source = structuredClone(prev);
+      const changed = patchObject(source, next);
+      if (!changed) return false;
+
+      for (const fn of state.before) {
+        const res = fn(prev, source);
+        if (res === false) return false;
+      }
+
+      state.value = source;
       notify(prev);
       return true;
     },
@@ -48,6 +85,7 @@ export function signal(initial) {
       if (prop === 'value') return state.value;
       if (prop === 'get') return api.get;
       if (prop === 'set') return api.set;
+      if (prop === 'patch') return api.patch;
       if (prop === 'subscribe') return api.subscribe;
       if (prop === 'before') return api.before;
       if (prop === Symbol.toPrimitive) return () => state.value;
@@ -89,6 +127,10 @@ export function readSignal(sig) {
 
 export function setSignal(sig, next, force = false) {
   return sig?.set?.(next, force);
+}
+
+export function patchSignal(sig, next) {
+  return sig?.patch?.(next);
 }
 
 export function getMappedArrayMeta(value) {

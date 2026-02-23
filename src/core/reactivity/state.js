@@ -1,4 +1,4 @@
-import { signal, setSignal, readSignal, subscribeSignal } from './signal.js';
+import { signal, setSignal, readSignal, subscribeSignal, patchSignal } from './signal.js';
 
 const STATE = Symbol('g.state');
 const STATE_META = Symbol('g.state.meta');
@@ -139,6 +139,9 @@ function createStateProxy(adapter, path = []) {
             return adapter.set(setAtPath(adapter.get(), path, p));
           };
         }
+        if(prop === 'patch') {
+          return adapter.patch;
+        }
         if (prop === 'subscribe') {
           return (fn) => adapter.subscribe(fn);
         }
@@ -182,6 +185,7 @@ export function state(initial) {
     kind: 'state',
     get: () => readSignal(rootSignal),
     set: (next) => setSignal(rootSignal, next, true),
+    patch: (next) => patchSignal(rootSignal, next),
     subscribe: (fn) => subscribeSignal(rootSignal, fn),
     before: rootSignal.before,
     mutate: (optimistic, mutation, options = {}) => mutateAdapter(adapter, optimistic, mutation, options),
