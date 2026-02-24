@@ -52,7 +52,7 @@ export function signal(initial) {
     },
     patch(next) {
       
-      if (!isObject(next) || isArray(next)) {
+      if (!isObject(next) || Array.isArray(next)) {
         return api.set(next, true);
       };
       const prev = state.value;
