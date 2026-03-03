@@ -270,6 +270,7 @@ export class Router {
     const el = resolveTarget(target);
     if (!el) throw new Error('Router.mount: target not found');
     if (this.#mountParent) return;
+    el.textContent = '';
     this.#mountParent = el;
     this.#mountAnchor = createAnchor('router');
     el.appendChild(this.#mountAnchor);

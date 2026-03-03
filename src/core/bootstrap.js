@@ -11,6 +11,7 @@ import { Renderer } from './renderable/renderer.js';
 export async function bootstrap(ComponentClass, target) {
   const el = typeof target === 'string' ? document.querySelector(target) : target;
   if (!el) throw new Error('bootstrap target not found');
+  el.textContent = '';
 
   if (typeof ComponentClass !== 'function') {
     throw new Error('bootstrap: component must be a function or class');

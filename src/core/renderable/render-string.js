@@ -39,7 +39,7 @@ export function renderToString(value) {
 export function hydrate(target, value) {
   const el = typeof target === 'string' ? document.querySelector(target) : target;
   if (!el) throw new Error('hydrate(target): target not found');
-  while (el.firstChild) el.removeChild(el.firstChild);
+  el.textContent = '';
   const values = Renderer.normalize(value);
   for (const r of values) {
     if (Renderer.isRenderable(r)) {
