@@ -26,6 +26,30 @@ const voidElements = new Set([
 ]);
 
 const _tplCache = new Map();
+let _tplCacheMax = 512;
+
+function getTemplate(html) {
+  let tpl = _tplCache.get(html);
+  if (tpl) {
+    _tplCache.delete(html);
+    _tplCache.set(html, tpl);
+    return tpl;
+  }
+  tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  _tplCache.set(html, tpl);
+  if (_tplCache.size > _tplCacheMax) {
+    _tplCache.delete(_tplCache.keys().next().value);
+  }
+  return tpl;
+}
+
+export function setTemplateCacheSize(max) {
+  _tplCacheMax = max;
+  while (_tplCache.size > _tplCacheMax) {
+    _tplCache.delete(_tplCache.keys().next().value);
+  }
+}
 
 function escapeHtml(str) {
   if (str.indexOf('&') < 0 && str.indexOf('<') < 0 && str.indexOf('>') < 0) return str;
@@ -59,12 +83,7 @@ export class ElementNode extends Renderable {
     this.#mounted = true;
     const html = this.#tryCompileTemplate();
     if (html !== null) {
-      let tpl = _tplCache.get(html);
-      if (!tpl) {
-        tpl = document.createElement('template');
-        tpl.innerHTML = html;
-        _tplCache.set(html, tpl);
-      }
+      const tpl = getTemplate(html);
       const el = tpl.content.firstChild.cloneNode(true);
       this.#el = el;
       this.#applyDynamicProps(el);

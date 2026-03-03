@@ -1,3 +1,4 @@
+export function setTemplateCacheSize(max: any): void;
 export class ElementNode extends Renderable {
     constructor(tagName: any, props?: {}, children?: any[]);
     tagName: any;

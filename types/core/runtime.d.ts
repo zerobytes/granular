@@ -1,4 +1,5 @@
 export { bootstrap } from "./bootstrap.js";
+export { setTemplateCacheSize } from "./dom/element.js";
 export { component } from "./component/function-component.js";
 export { resolve } from "./reactivity/resolve.js";
 export { computed } from "./reactivity/computed.js";

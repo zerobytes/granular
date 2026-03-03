@@ -37,6 +37,7 @@ export {
   router,
   Elements,
   context,
+  setTemplateCacheSize,
 } from './core/runtime.js';
 
 export * from './core/dom/tags.js';
