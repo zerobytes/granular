@@ -21,6 +21,10 @@ export class ListNode extends Renderable {
     this.#renderItem = renderItem;
   }
 
+  #isStateSource() {
+    return isState(this.#items) || isStatePath(this.#items);
+  }
+
   mountInto(parent, beforeNode) {
     if (this.#mounted) return;
     this.#mounted = true;
@@ -56,8 +60,13 @@ export class ListNode extends Renderable {
   #readItems() {
     if (isObservableArray(this.#items)) return this.#items;
     if (isSignal(this.#items)) return readSignal(this.#items) || [];
-    if (isState(this.#items) || isStatePath(this.#items)) return readState(this.#items) || [];
+    if (this.#isStateSource()) return readState(this.#items) || [];
     return Array.isArray(this.#items) ? this.#items : [];
+  }
+
+  #createItemState(index, item) {
+    if (this.#isStateSource()) return this.#items[String(index)];
+    return state(item);
   }
 
   #wire() {
@@ -96,9 +105,18 @@ export class ListNode extends Renderable {
       return;
     }
 
-    if (isState(this.#items) || isStatePath(this.#items)) {
-      this.#unsub = subscribeState(this.#items, () => {
-        this.#reset(this.#readItems());
+    if (this.#isStateSource()) {
+      let lastLen = (readState(this.#items) || []).length;
+      this.#unsub = subscribeState(this.#items, (next) => {
+        const nextArr = Array.isArray(next) ? next : [];
+        const nextLen = nextArr.length;
+        if (nextLen === lastLen) return;
+        if (nextLen > lastLen) {
+          for (let i = lastLen; i < nextLen; i++) this.#insert(i, nextArr[i]);
+        } else {
+          this.#remove(nextLen, lastLen - nextLen);
+        }
+        lastLen = nextLen;
       });
     }
   }
@@ -155,7 +173,7 @@ export class ListNode extends Renderable {
     const marker = document.createTextNode('');
     parent.insertBefore(marker, refNode);
 
-    const itemState = state(item);
+    const itemState = this.#createItemState(index, item);
     const indexSignal = signal(index);
     const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
     const renderables = Renderer.normalize(rendered);
@@ -190,7 +208,7 @@ export class ListNode extends Renderable {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const idx = index + i;
-      const itemState = state(item);
+      const itemState = this.#createItemState(idx, item);
       const indexSignal = signal(idx);
       const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
       const renderables = Renderer.normalize(rendered);
