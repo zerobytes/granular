@@ -1,8 +1,8 @@
-export function signal(initial: any): {
+export function signal(initial: any, options: any): {
     get(): any;
     set(next: any, force?: boolean): boolean;
     patch(next: any): boolean;
-    subscribe(fn: any): () => boolean;
+    subscribe(fn: any): () => void;
     before(fn: any): () => boolean;
 };
 export function isSignal(value: any): boolean;

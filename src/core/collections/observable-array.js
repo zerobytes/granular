@@ -119,6 +119,54 @@ export function observableArray(initial = []) {
           return removed;
         };
       }
+      if (prop === 'sort') {
+        return (compareFn) => {
+          const prevItems = t.slice();
+          const ctx = { array: proxy, op: 'sort', args: [compareFn], prevLength: t.length, nextLength: t.length };
+          const patch = { type: 'reset', items: null, prevItems };
+          if (!hub.emitBefore('reset', patch, ctx)) return proxy;
+          Array.prototype.sort.call(t, compareFn);
+          patch.items = t.slice();
+          notify(patch, ctx);
+          return proxy;
+        };
+      }
+      if (prop === 'reverse') {
+        return () => {
+          const prevItems = t.slice();
+          const ctx = { array: proxy, op: 'reverse', args: [], prevLength: t.length, nextLength: t.length };
+          const patch = { type: 'reset', items: null, prevItems };
+          if (!hub.emitBefore('reset', patch, ctx)) return proxy;
+          Array.prototype.reverse.call(t);
+          patch.items = t.slice();
+          notify(patch, ctx);
+          return proxy;
+        };
+      }
+      if (prop === 'fill') {
+        return (value, start, end) => {
+          const prevItems = t.slice();
+          const ctx = { array: proxy, op: 'fill', args: [value, start, end], prevLength: t.length, nextLength: t.length };
+          const patch = { type: 'reset', items: null, prevItems };
+          if (!hub.emitBefore('reset', patch, ctx)) return proxy;
+          Array.prototype.fill.call(t, value, start, end);
+          patch.items = t.slice();
+          notify(patch, ctx);
+          return proxy;
+        };
+      }
+      if (prop === 'copyWithin') {
+        return (target, start, end) => {
+          const prevItems = t.slice();
+          const ctx = { array: proxy, op: 'copyWithin', args: [target, start, end], prevLength: t.length, nextLength: t.length };
+          const patch = { type: 'reset', items: null, prevItems };
+          if (!hub.emitBefore('reset', patch, ctx)) return proxy;
+          Array.prototype.copyWithin.call(t, target, start, end);
+          patch.items = t.slice();
+          notify(patch, ctx);
+          return proxy;
+        };
+      }
 
       return value.bind(t);
     },

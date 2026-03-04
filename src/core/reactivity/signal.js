@@ -6,13 +6,16 @@ function isObject(value) {
 }
 
 
-export function signal(initial) {
+export function signal(initial, options) {
   const state = {
     [SIGNAL]: true,
     value: initial,
     subs: new Set(),
     before: new Set(),
   };
+
+  const onEmpty = options?.onEmpty;
+  const onSubscribe = options?.onSubscribe;
 
   const notify = (prev) => {
     for (const fn of state.subs) fn(state.value, prev);
@@ -71,7 +74,11 @@ export function signal(initial) {
     },
     subscribe(fn) {
       state.subs.add(fn);
-      return () => state.subs.delete(fn);
+      if (onSubscribe) onSubscribe();
+      return () => {
+        state.subs.delete(fn);
+        if (onEmpty && state.subs.size === 0) onEmpty();
+      };
     },
     before(fn) {
       state.before.add(fn);

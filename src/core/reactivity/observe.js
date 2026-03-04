@@ -67,8 +67,8 @@ function subscribeBeforeTarget(target, fn) {
   throw new Error('before(x).change: unsupported target');
 }
 
-function createComputedState() {
-  const rootSignal = signal(undefined);
+function createComputedState(signalOptions) {
+  const rootSignal = signal(undefined, signalOptions);
   const adapter = {
     kind: 'computed',
     get: () => readSignal(rootSignal),
@@ -190,12 +190,31 @@ export function capture({ name, subscription }, ...targets) {
       };
     },
     compute(fn, options = {}) {
-      const { value, setValue } = createComputedState();
+      let disposed = false;
+      let pendingAutoDispose = false;
+      const keepAlive = options.keepAlive === true;
+
+      let doDispose = null;
+
+      const signalOptions = keepAlive ? undefined : {
+        onEmpty() {
+          if (disposed) return;
+          pendingAutoDispose = true;
+          queueMicrotask(() => {
+            if (!pendingAutoDispose || disposed) return;
+            doDispose?.();
+          });
+        },
+        onSubscribe() {
+          pendingAutoDispose = false;
+        },
+      };
+
+      const { value, setValue } = createComputedState(signalOptions);
       let runId = 0;
       let lastHash = undefined;
       let lastComputedValue = undefined;
       let scheduled = null;
-      let disposed = false;
       let lastValues = list.map(valueForTarget);
       const equals = typeof options.equals === 'function' ? options.equals : Object.is;
       const handleError = (err) => {
@@ -277,15 +296,20 @@ export function capture({ name, subscription }, ...targets) {
           scheduleRun(values.next, values.prev, values.ctx);
         })
       });
+
+      doDispose = () => {
+        if (disposed) return;
+        disposed = true;
+        pendingAutoDispose = false;
+        runId++;
+        if (scheduled) clearTimeout(scheduled);
+        for (const unsub of unsubs) {
+          if (typeof unsub === 'function') unsub();
+        }
+      };
+
       Object.defineProperty(value, 'dispose', {
-        value: () => {
-          disposed = true;
-          runId++;
-          if (scheduled) clearTimeout(scheduled);
-          for (const unsub of unsubs) {
-            if (typeof unsub === 'function') unsub();
-          }
-        },
+        value: () => doDispose(),
         enumerable: false,
       });
       return value;

@@ -76,6 +76,29 @@ function setAtPath(obj, path, value) {
   return root;
 }
 
+const ARRAY_MUTATORS = {
+  push: (arr, args) => { const a = arr.slice(); a.push(...args); return a; },
+  pop: (arr) => arr.slice(0, -1),
+  shift: (arr) => arr.slice(1),
+  unshift: (arr, args) => { const a = args.slice(); a.push(...arr); return a; },
+  splice: (arr, args) => { const a = arr.slice(); a.splice(...args); return a; },
+  sort: (arr, args) => arr.slice().sort(args[0]),
+  reverse: (arr) => arr.slice().reverse(),
+  fill: (arr, args) => arr.slice().fill(...args),
+  copyWithin: (arr, args) => arr.slice().copyWithin(...args),
+};
+
+const ARRAY_RETURN = {
+  push: (arr, args) => arr.length + args.length,
+  pop: (arr) => arr[arr.length - 1],
+  shift: (arr) => arr[0],
+  splice: (arr, args) => {
+    const start = Number(args[0]) || 0;
+    const dc = args.length > 1 ? (Number(args[1]) || 0) : arr.length - start;
+    return arr.slice(start, start + dc);
+  },
+};
+
 function createSetterProxy(adapter, basePath) {
   return new Proxy(
     {},
@@ -97,6 +120,17 @@ function createSetterProxy(adapter, basePath) {
         }
         if (prop === 'mutate') {
           return (...args) => adapter.mutate?.(...args);
+        }
+        if (prop in ARRAY_MUTATORS) {
+          return (...args) => {
+            const current = getAtPath(adapter.get(), basePath);
+            if (!Array.isArray(current)) return undefined;
+            const retFn = ARRAY_RETURN[prop];
+            const ret = retFn ? retFn(current, args) : undefined;
+            const next = ARRAY_MUTATORS[prop](current, args);
+            adapter.set(setAtPath(adapter.get(), basePath, next));
+            return ret !== undefined ? ret : next;
+          };
         }
         if (typeof prop === 'string') {
           return createSetterProxy(adapter, basePath.concat(prop));
