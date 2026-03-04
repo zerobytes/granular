@@ -1,6 +1,5 @@
 export {
   bootstrap,
-  component,
   signal,
   isSignal,
   setSignal,

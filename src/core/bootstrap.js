@@ -18,14 +18,10 @@ export async function bootstrap(ComponentClass, target) {
   }
 
   let instance = null;
-  if (ComponentClass.__zbFactory) {
-    instance = ComponentClass();
-  } else {
-    try {
-      instance = new ComponentClass();
-    } catch {
-      instance = null;
-    }
+  try {
+    instance = new ComponentClass();
+  } catch {
+    instance = null;
   }
 
   if (instance) {

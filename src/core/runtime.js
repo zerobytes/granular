@@ -1,6 +1,5 @@
 export { bootstrap } from './bootstrap.js';
 export { setTemplateCacheSize } from './dom/element.js';
-export { component } from './component/function-component.js';
 export { signal, isSignal, setSignal, readSignal } from './reactivity/signal.js';
 export { state, isState, isStatePath, isComputed } from './reactivity/state.js';
 export { after, before, set, subscribe } from './reactivity/observe.js';

@@ -688,8 +688,7 @@ export class Router {
     let page;
     let isClassBased = false;
     
-    // Check if it's a class (not an arrow function and has prototype methods)
-    if (PageClass.prototype && PageClass.prototype.constructor === PageClass && !PageClass.__zbFactory) {
+    if (PageClass.prototype && PageClass.prototype.constructor === PageClass) {
       try {
         page = new PageClass(props);
         isClassBased = true;
