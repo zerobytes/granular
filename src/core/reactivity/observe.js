@@ -227,7 +227,7 @@ export function capture({ name, subscription }, ...targets) {
         }
       };
       const computeNow = (nextValues, prevValues, ctxs) => {
-        if (disposed) return;
+        if (disposed || pendingAutoDispose) return;
         const current = ++runId;
         if (typeof options.hash === 'function') {
           let nextHash = undefined;
@@ -265,7 +265,7 @@ export function capture({ name, subscription }, ...targets) {
         setValue(result);
       };
       const scheduleRun = (nextValues, prevValues, ctxs) => {
-        if (disposed) return;
+        if (disposed || pendingAutoDispose) return;
         const delay = Math.max(0, options.debounce ?? 0);
         if (!delay) {
           computeNow(nextValues, prevValues, ctxs);
