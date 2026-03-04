@@ -240,7 +240,7 @@ Input({
 
 ### State
 
-`state(initialValue)` creates a reactive container:
+`state(initialValue)` creates a reactive container. Both `.get()` and `.set()` are **path-relative**: calling them from a nested path resolves from that path, not the root.
 
 ```javascript
 import { state } from '@granularjs/core';
@@ -260,7 +260,11 @@ user.set('age', 30);        // Alternative syntax
 
 // Path access
 user.name  // Returns a reactive path, not the value!
-user.name.get()  // Returns 'Maria'
+user.name.get()  // Returns 'Maria' (path-relative)
+user.get()       // Returns { name: 'Maria', age: 30 } (root)
+
+// Path-relative .set()
+user.name.set('Ana')  // Sets name to 'Ana' (path-relative)
 ```
 
 ### Signal
@@ -1475,8 +1479,8 @@ const ItemWithExpand = ({ item }) => {
 ```javascript
 // WRONG - extracts raw value once, kills all reactivity
 list(items, (item) => {
-  const raw = item.get();       // ❌ Static snapshot
-  return Div(raw.name);         // ❌ Never updates
+  const raw = item.get();       // ❌ Static snapshot (returns the item object, but only once)
+  return Div(raw.name);         // ❌ Just a string, never updates
 });
 
 // CORRECT - use state paths for reactive bindings
@@ -1484,10 +1488,15 @@ list(items, (item) => {
   return Div(
     Span(item.name),            // ✅ Reactive - updates when name changes
     Button({
-      onClick: () => action(item.id.get())  // ✅ .get() inside closure reads at call time
+      onClick: () => action(item.id.get())  // ✅ .get() inside closure reads at call time (returns id value)
     }, 'Act')
   );
 });
+
+// NOTE: .get() is path-relative
+// item.get()      → returns the item object (not root)
+// item.name.get() → returns the name string
+// item.id.get()   → returns the id value
 
 // WRONG - using || with StatePath (always truthy)
 list(items, (item) => Button({ size: item.size || 'sm' }));  // ❌ Always returns StatePath
@@ -1556,9 +1565,11 @@ user.set({ name: 'Maria' });
 ```javascript
 // === STATE ===
 const count = state(0);
-count.get()           // Read
-count.set(1)          // Write
-count.set().prop = x  // Nested write
+count.get()           // Read (path-relative)
+count.set(1)          // Write (path-relative)
+count.set().prop = x  // Nested write via setter proxy
+// user.name.get() → returns name value, not root
+// user.name.set('x') → sets name to 'x'
 
 // === OBSERVE ===
 after(x).change((next, prev) => {})     // React to changes

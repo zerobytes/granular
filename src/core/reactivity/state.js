@@ -76,6 +76,71 @@ function setAtPath(obj, path, value) {
   return root;
 }
 
+function createPathTrie() {
+  const root = { subs: null, children: null };
+
+  const getOrCreate = (path) => {
+    let node = root;
+    for (const seg of path) {
+      if (!node.children) node.children = new Map();
+      let child = node.children.get(seg);
+      if (!child) {
+        child = { subs: null, children: null };
+        node.children.set(seg, child);
+      }
+      node = child;
+    }
+    return node;
+  };
+
+  const add = (path, fn) => {
+    const node = getOrCreate(path);
+    if (!node.subs) node.subs = new Set();
+    node.subs.add(fn);
+    return () => {
+      node.subs.delete(fn);
+      if (node.subs.size === 0) node.subs = null;
+    };
+  };
+
+  const notifyNode = (node, next, prev) => {
+    if (node.subs) {
+      for (const fn of node.subs) fn(next, prev);
+    }
+  };
+
+  const notifyDescendants = (node, next, prev) => {
+    notifyNode(node, next, prev);
+    if (node.children) {
+      for (const child of node.children.values()) {
+        notifyDescendants(child, next, prev);
+      }
+    }
+  };
+
+  const notifyAffected = (changedPath, next, prev) => {
+    let node = root;
+    for (let i = 0; i < changedPath.length; i++) {
+      const seg = changedPath[i];
+      if (!node.children) return;
+      const child = node.children.get(seg);
+      if (!child) return;
+      if (i < changedPath.length - 1) {
+        notifyNode(child, next, prev);
+      } else {
+        notifyDescendants(child, next, prev);
+      }
+      node = child;
+    }
+  };
+
+  const notifyAll = (next, prev) => {
+    notifyDescendants(root, next, prev);
+  };
+
+  return { add, notifyAffected, notifyAll };
+}
+
 const ARRAY_MUTATORS = {
   push: (arr, args) => { const a = arr.slice(); a.push(...args); return a; },
   pop: (arr) => arr.slice(0, -1),
@@ -108,14 +173,14 @@ function createSetterProxy(adapter, basePath) {
           return () => {
             const current = getAtPath(adapter.get(), basePath);
             const next = (Number(current) || 0) + 1;
-            adapter.set(setAtPath(adapter.get(), basePath, next));
+            adapter.set(setAtPath(adapter.get(), basePath, next), basePath);
           };
         }
         if (prop === 'decrement') {
           return () => {
             const current = getAtPath(adapter.get(), basePath);
             const next = (Number(current) || 0) - 1;
-            adapter.set(setAtPath(adapter.get(), basePath, next));
+            adapter.set(setAtPath(adapter.get(), basePath, next), basePath);
           };
         }
         if (prop === 'mutate') {
@@ -128,7 +193,7 @@ function createSetterProxy(adapter, basePath) {
             const retFn = ARRAY_RETURN[prop];
             const ret = retFn ? retFn(current, args) : undefined;
             const next = ARRAY_MUTATORS[prop](current, args);
-            adapter.set(setAtPath(adapter.get(), basePath, next));
+            adapter.set(setAtPath(adapter.get(), basePath, next), basePath);
             return ret !== undefined ? ret : next;
           };
         }
@@ -139,7 +204,7 @@ function createSetterProxy(adapter, basePath) {
       },
       set(_t, prop, value) {
         const path = basePath.concat(String(prop));
-        adapter.set(setAtPath(adapter.get(), path, value));
+        adapter.set(setAtPath(adapter.get(), path, value), path);
         return true;
       },
     }
@@ -156,7 +221,7 @@ function createStateProxy(adapter, path = []) {
         if (prop === STATE_META) return meta;
         if (prop === 'get') {
           return (p) => {
-            if (p === undefined) return adapter.get();
+            if (p === undefined) return resolveValue(adapter, path);
             return resolveValue(adapter, path.concat(splitPath(p)));
           };
         }
@@ -164,13 +229,14 @@ function createStateProxy(adapter, path = []) {
           return (...args) => {
             if (args.length === 0) return createSetterProxy(adapter, path);
             if (args.length === 1) {
-              return adapter.set(setAtPath(adapter.get(), path, args[0]));
+              return adapter.set(setAtPath(adapter.get(), path, args[0]), path);
             }
             const [p, v] = args;
             if (typeof p === 'string') {
-              return adapter.set(setAtPath(adapter.get(), path.concat(splitPath(p)), v));
+              const full = path.concat(splitPath(p));
+              return adapter.set(setAtPath(adapter.get(), full, v), full);
             }
-            return adapter.set(setAtPath(adapter.get(), path, p));
+            return adapter.set(setAtPath(adapter.get(), path, p), path);
           };
         }
         if(prop === 'patch') {
@@ -215,12 +281,36 @@ function createStateProxy(adapter, path = []) {
 
 export function state(initial) {
   const rootSignal = signal(initial);
+  const rootSubs = new Set();
+  const trie = createPathTrie();
+  let _changedPath = null;
+
+  subscribeSignal(rootSignal, (next, prev) => {
+    const cp = _changedPath;
+    _changedPath = null;
+    for (const fn of rootSubs) fn(next, prev);
+    if (cp && cp.length > 0) {
+      trie.notifyAffected(cp, next, prev);
+    } else {
+      trie.notifyAll(next, prev);
+    }
+  });
+
   const adapter = {
     kind: 'state',
     get: () => readSignal(rootSignal),
-    set: (next) => setSignal(rootSignal, next, true),
+    set: (next, changedPath) => {
+      _changedPath = changedPath || null;
+      return setSignal(rootSignal, next, true);
+    },
     patch: (next) => patchSignal(rootSignal, next),
-    subscribe: (fn) => subscribeSignal(rootSignal, fn),
+    subscribe: (fn, path) => {
+      if (!path || path.length === 0) {
+        rootSubs.add(fn);
+        return () => rootSubs.delete(fn);
+      }
+      return trie.add(path, fn);
+    },
     before: rootSignal.before,
     mutate: (optimistic, mutation, options = {}) => mutateAdapter(adapter, optimistic, mutation, options),
   };
@@ -290,7 +380,7 @@ export function subscribeState(value, fn) {
     const prev = resolveValue(meta.adapter, meta.path, prevRoot);
     if (next === prev) return;
     fn(next, prev);
-  });
+  }, meta.path);
 }
 
 export function readStateMeta(meta) {
@@ -305,13 +395,13 @@ export function subscribeStateMeta(meta, fn) {
     const prev = resolveValue(meta.adapter, meta.path, prevRoot);
     if (next === prev) return;
     fn(next, prev);
-  });
+  }, meta.path);
 }
 
 export function setStateValue(value, next) {
   const meta = value?.[STATE_META];
   if (!meta) return;
-  return meta.adapter.set(setAtPath(meta.adapter.get(), meta.path, next));
+  return meta.adapter.set(setAtPath(meta.adapter.get(), meta.path, next), meta.path);
 }
 
 export function getMappedMeta(value) {

@@ -171,6 +171,7 @@ Your component runs once. The DOM updates forever. That is the whole point.
 `signal(value)` and `state(value)`:
 - `signal` is a small observable primitive.
 - `state` provides proxy paths with `.get()` / `.set()` and read‑only bindings.
+- `.get()` and `.set()` are path-relative: calling them from a nested path resolves from that path, not the root.
 - Direct mutation of state paths is forbidden (`s.user = ...` throws).
 - `mutate(optimistic, mutation, options?)` supports optimistic updates with rollback.
 - `subscribe(target, selector?, listener?, equalityFn?)` subscribes to a reactive target with optional selector for fine-grained updates.
@@ -259,6 +260,7 @@ Options:
 - `renderItem` receives `(itemState, indexSignal)` - reactive wrappers, not raw values.
 - On `set` patches, the existing state is updated (`itemState.set(newValue)`), so only the specific DOM nodes bound to changed properties update. No DOM destruction/recreation.
 - Use state paths for reactive bindings: `Span(item.name)` updates only that text node.
+- `.get()` is path-relative: `item.name.get()` returns the name value, `item.get()` returns the item object.
 - Use `.get()` inside event closures for raw values: `onClick: () => doSomething(item.id.get())`.
 
 Example:

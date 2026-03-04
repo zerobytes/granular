@@ -194,7 +194,7 @@ Module: `src/core/reactivity/signal.js`
 ### State and Observers
 Module: `src/core/reactivity/state.js` and `src/core/reactivity/observe.js`
 
-- `state(value)` creates an observable state with `get()` and `set()`.
+- `state(value)` creates an observable state with `get()` and `set()`. Both are path-relative: calling them from a nested path resolves from that path.
 - `isState(value)`, `isStatePath(value)`, `isComputed(value)` are runtime type guards for distinguishing reactive types.
 - `after(...x).change(fn)` and `before(...x).change(fn)` listen to changes.
 - `change(fn)` receives `(next, prev, ctx)`.
