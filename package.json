@@ -19,8 +19,8 @@
     "src"
   ],
   "scripts": {
-    "build:minify": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js && npx -y -p typescript@latest tsc -p tsconfig.json",
-    "build:debug": "npx -y esbuild src/index.js --bundle --sourcemap --format=esm --outfile=./dist/granular.js && npx -y -p typescript@latest tsc -p tsconfig.json",
+    "build:minify": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js",
+    "build:debug": "npx -y esbuild src/index.js --bundle --sourcemap --format=esm --outfile=./dist/granular.js",
     "build:watch": "npx -y esbuild src/index.js --bundle --minify --sourcemap --format=esm --outfile=./dist/granular.min.js --watch",
     "version": "npm run build:minify && git add -A",
     "postversion": "git push && git push origin v$(node -p \"require('./package.json').version\")"
