@@ -84,6 +84,8 @@ function createContextConsumer(defaultValue) {
   return {
     state: consumerState,
     _connect(providerSignal) {
+      if (activeProviderSignal === providerSignal) return;
+      if (providerUnsub) { providerUnsub(); providerUnsub = null; }
       activeProviderSignal = providerSignal;
       if (localUnsub) { localUnsub(); localUnsub = null; }
       providerUnsub = subscribeSignal(providerSignal, notify);
@@ -129,11 +131,12 @@ function createContextConsumer(defaultValue) {
 export function context(defaultValue) {
   const pending = [];
   const mountStack = [];
-  const scopeStartIndices = [];
+  const providerStack = [];
 
   const scope = (value) => {
-    scopeStartIndices.push(pending.length);
     const providerSignal = signal(value !== undefined ? value : defaultValue);
+    const scopeConsumers = [];
+    providerStack.push({ signal: providerSignal, consumers: scopeConsumers });
 
     const adapter = {
       kind: 'state',
@@ -146,9 +149,13 @@ export function context(defaultValue) {
     const providerState = createStateFromAdapter(adapter);
 
     const serve = (renderable) => {
-      const start = scopeStartIndices.pop();
-      const consumers = pending.splice(start, pending.length - start);
-      return new ContextProvider(renderable, providerSignal, consumers, mountStack);
+      providerStack.pop();
+      const pendingConsumers = pending.splice(0);
+      for (const consumer of pendingConsumers) {
+        consumer._connect(providerSignal);
+      }
+      const allConsumers = [...scopeConsumers, ...pendingConsumers];
+      return new ContextProvider(renderable, providerSignal, allConsumers, mountStack);
     };
 
     return new Proxy(providerState, {
@@ -165,7 +172,11 @@ export function context(defaultValue) {
       const top = mountStack[mountStack.length - 1];
       consumer._connect(top.signal);
       top.consumers.push(consumer);
-    } else if (scopeStartIndices.length > 0) {
+    } else if (providerStack.length > 0) {
+      const top = providerStack[providerStack.length - 1];
+      consumer._connect(top.signal);
+      top.consumers.push(consumer);
+    } else {
       pending.push(consumer);
     }
     return consumer.state;
