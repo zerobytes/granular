@@ -47,7 +47,7 @@ function normalizeWhen(when) {
 }
 
 function resolveValue(adapter, path, root) {
-  const currentRoot = root === undefined ? adapter.get() : root;
+  const currentRoot = arguments.length < 3 ? adapter.get() : root;
   const value = getAtPath(currentRoot, path);
   const defaults = adapter.defaults;
   if (!defaults) return value;
