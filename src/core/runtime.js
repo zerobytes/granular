@@ -9,7 +9,7 @@ export { concat } from './reactivity/concat.js';
 export { persist } from './reactivity/persist.js';
 export { form } from './forms/form.js';
 export { list } from './dom/list.js';
-export { when } from './dom/when.js';
+export { when, isWhen } from './dom/when.js';
 export { ErrorBoundary } from './dom/error-boundary.js';
 export { virtualList } from './dom/virtual-list.js';
 export { portal } from './dom/portal.js';

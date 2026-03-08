@@ -19,6 +19,7 @@ export {
   form,
   list,
   when,
+  isWhen,
   ErrorBoundary,
   virtualList,
   portal,
