@@ -548,6 +548,8 @@ export class Router {
   async #runNavigation(location, { token, source, redirectChain }) {
     if (token !== this.#navToken) return;
 
+    const redirectSet = redirectChain ?? new Set();
+
     const match = this.#match(location.pathname);
     if (!match) return false;
 
@@ -568,10 +570,10 @@ export class Router {
     };
 
     try {
-      const redirect = await this.#resolveRedirect(chain, ctx, redirectChain);
+      const redirect = await this.#resolveRedirect(chain, ctx, redirectSet);
       if (redirect) return false;
 
-      const ok = await this.#runGuards(chain, ctx, redirectChain);
+      const ok = await this.#runGuards(chain, ctx, redirectSet);
       if (!ok) {
         if (source === 'pop') this.#restoreCurrentUrl();
         return false;
