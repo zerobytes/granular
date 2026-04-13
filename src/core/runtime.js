@@ -9,6 +9,7 @@ export { concat } from './reactivity/concat.js';
 export { persist } from './reactivity/persist.js';
 export { form } from './forms/form.js';
 export { list } from './dom/list.js';
+export { match } from './dom/match.js';
 export { when, isWhen } from './dom/when.js';
 export { ErrorBoundary } from './dom/error-boundary.js';
 export { virtualList } from './dom/virtual-list.js';
@@ -24,5 +25,4 @@ export { Router, createRouter, router } from './router/router.js';
 export { context } from './context.js';
 export { Elements } from './dom/tags.js';
 export * from './dom/tags.js';
-
 

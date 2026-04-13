@@ -18,6 +18,7 @@ export {
   persist,
   form,
   list,
+  match,
   when,
   isWhen,
   ErrorBoundary,

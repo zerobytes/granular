@@ -1,8 +1,8 @@
 import { Renderable } from '../renderable/renderable.js';
 import { Renderer } from '../renderable/renderer.js';
 import { createAnchor } from './dom.js';
-import { isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
-import { isSignal, readSignal, subscribeSignal } from '../reactivity/signal.js';
+import { collectDependencies } from '../reactivity/tracker.js';
+import { isReactiveSource, readSourceValue, subscribeSource } from '../reactivity/reactive-source.js';
 
 const WHEN = Symbol('g.when');
 
@@ -20,7 +20,11 @@ export class WhenNode extends Renderable {
   #renderFalse;
   #anchor = null;
   #mounted = false;
-  #unsub = null;
+  #depMap = new Map();
+  #stableHandler = null;
+  #sourceEvaluation = null;
+  #updating = false;
+  #pendingRecheck = false;
   #mountedValues = [];
   #mountedNodes = [];
 
@@ -45,8 +49,10 @@ export class WhenNode extends Renderable {
   unmount() {
     if (!this.#mounted) return;
     this.#mounted = false;
-    if (this.#unsub) this.#unsub();
-    this.#unsub = null;
+    this.#clearSourceSubscriptions();
+    this.#sourceEvaluation = null;
+    this.#updating = false;
+    this.#pendingRecheck = false;
     this.#cleanup();
     if (this.#anchor) {
       this.#anchor.remove();
@@ -55,23 +61,88 @@ export class WhenNode extends Renderable {
   }
 
   #wire() {
-    if (isState(this.#source) || isStatePath(this.#source)) {
-      this.#unsub = subscribeState(this.#source, () => this.#update());
-      return;
+    if (!this.#stableHandler) {
+      this.#stableHandler = () => this.#handleSourceChange();
     }
-    if (isSignal(this.#source)) {
-      this.#unsub = subscribeSignal(this.#source, () => this.#update());
+    const evaluation = this.#getSourceEvaluation();
+    const newDeps = new Set(evaluation.deps);
+
+    for (const [dep, unsub] of this.#depMap) {
+      if (!newDeps.has(dep)) {
+        unsub();
+        this.#depMap.delete(dep);
+      }
+    }
+
+    for (const dep of newDeps) {
+      if (!this.#depMap.has(dep)) {
+        const unsub = subscribeSource(dep, this.#stableHandler);
+        if (unsub) this.#depMap.set(dep, unsub);
+      }
     }
   }
 
-  #read() {
-    if (isState(this.#source) || isStatePath(this.#source)) return !!readState(this.#source);
-    if (isSignal(this.#source)) return !!readSignal(this.#source);
-    return !!this.#source;
+  #handleSourceChange() {
+    this.#sourceEvaluation = null;
+    if (this.#updating) {
+      this.#pendingRecheck = true;
+      return;
+    }
+    this.#updating = true;
+    try {
+      this.#update();
+      this.#wire();
+      if (this.#pendingRecheck) {
+        this.#pendingRecheck = false;
+        this.#sourceEvaluation = null;
+        this.#update();
+        this.#wire();
+      }
+    } finally {
+      this.#updating = false;
+      this.#pendingRecheck = false;
+    }
+  }
+
+  #clearSourceSubscriptions() {
+    for (const unsub of this.#depMap.values()) unsub();
+    this.#depMap.clear();
+  }
+
+  #evaluateSource() {
+    if (typeof this.#source === 'function') {
+      const { value, deps } = collectDependencies(() => this.#source());
+      let resolved = value;
+      if (isReactiveSource(resolved)) {
+        if (!deps.includes(resolved)) deps.push(resolved);
+        resolved = readSourceValue(resolved);
+      }
+      return { predicate: !!resolved, deps };
+    }
+
+    if (isReactiveSource(this.#source)) {
+      return { predicate: !!readSourceValue(this.#source), deps: [this.#source] };
+    }
+
+    return { predicate: !!this.#source, deps: [] };
+  }
+
+  #getSourceEvaluation() {
+    if (!this.#sourceEvaluation) {
+      this.#sourceEvaluation = this.#evaluateSource();
+    }
+    return this.#sourceEvaluation;
+  }
+
+  #resolveSourceEvaluation() {
+    if (!this.#mounted && this.#depMap.size === 0) {
+      return this.#evaluateSource();
+    }
+    return this.#getSourceEvaluation();
   }
 
   readValue() {
-    const predicate = this.#read();
+    const predicate = this.#resolveSourceEvaluation().predicate;
     const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
     if (Renderer.isRenderable(value) || Renderer.isDomNode(value)) return undefined;
     if (!isValidAttributeValue(value)) return undefined;
@@ -79,13 +150,47 @@ export class WhenNode extends Renderable {
   }
 
   subscribeValue(fn) {
-    if (isState(this.#source) || isStatePath(this.#source)) {
-      return subscribeState(this.#source, () => fn(this.readValue()));
+    let unsubs = [];
+    let closed = false;
+    let attachQueued = false;
+    const cleanup = () => {
+      for (const unsub of unsubs) unsub();
+      unsubs = [];
+    };
+    const scheduleAttach = () => {
+      if (attachQueued || closed) return;
+      attachQueued = true;
+      queueMicrotask(() => {
+        attachQueued = false;
+        if (closed) return;
+        attach();
+      });
+    };
+    const attach = () => {
+      cleanup();
+      const evaluation = this.#evaluateSource();
+      this.#sourceEvaluation = evaluation;
+      for (const dep of evaluation.deps) {
+        const unsub = subscribeSource(dep, () => {
+          this.#sourceEvaluation = null;
+          fn(this.readValue());
+          scheduleAttach();
+        });
+        if (unsub) unsubs.push(unsub);
+      }
+    };
+
+    attach();
+    if (!unsubs.length) {
+      this.#sourceEvaluation = null;
+      cleanup();
+      return null;
     }
-    if (isSignal(this.#source)) {
-      return subscribeSignal(this.#source, () => fn(this.readValue()));
-    }
-    return null;
+    return () => {
+      closed = true;
+      cleanup();
+      this.#sourceEvaluation = null;
+    };
   }
 
   #cleanup() {
@@ -97,7 +202,7 @@ export class WhenNode extends Renderable {
 
   #update() {
     this.#cleanup();
-    const predicate = this.#read();
+    const predicate = this.#getSourceEvaluation().predicate;
     const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
     const values = Renderer.normalize(value);
     this.#mountedValues = values;
@@ -125,13 +230,19 @@ export class WhenNode extends Renderable {
   }
 
   renderToString(render) {
-    const predicate = this.#read();
+    const predicate = this.#resolveSourceEvaluation().predicate;
     const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
     return render(value);
   }
 }
 
 export function when(source, renderTrue, renderFalse) {
+  if (typeof renderTrue !== 'function') {
+    throw new Error('when(source, renderTrue, renderFalse?): renderTrue must be a function');
+  }
+  if (renderFalse != null && typeof renderFalse !== 'function') {
+    throw new Error('when(source, renderTrue, renderFalse?): renderFalse must be a function');
+  }
   return new WhenNode(source, renderTrue, renderFalse);
 }
 

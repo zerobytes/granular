@@ -279,6 +279,13 @@ todos[0] = { text: 'Master', done: true };  // only updates bound text nodes
 
 `when(condition, renderTrue, renderFalse)`:
 - Reactive conditional rendering without re‑rendering parents.
+- `condition` accepts Granular reactive values, predicate functions, or raw truthy/falsy values.
+
+`match(sources, predicate, renderTrue, renderFalse)`:
+- Predicate-based conditional rendering with explicit dependencies.
+- Re-evaluates the predicate when listed sources change.
+- Only swaps branches when the predicate result changes.
+- Does not re-run the active render branch while the predicate stays `true` or stays `false`.
 Granular treats lists as live data structures, not as arrays you re‑map on every tick.
 
 ### Virtualization / Windowing
@@ -598,4 +605,3 @@ ws.after().message(({ data }) => {
 
 ws.send({ type: 'ping' });
 ```
-

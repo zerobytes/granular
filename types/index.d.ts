@@ -688,6 +688,8 @@ export const Elements: Record<string, TagFunction>;
 //  DOM — Conditional Rendering
 // ═══════════════════════════════════════════════════════════════════════════
 
+type MatchSource<T = any> = ReactiveSource<T> | T;
+
 declare class WhenNode extends Renderable {
   mountInto(parent: Node, beforeNode: Node | null): void;
   unmount(): void;
@@ -696,12 +698,34 @@ declare class WhenNode extends Renderable {
   renderToString(render: (value: unknown) => string): string;
 }
 
-/** Reactive conditional rendering. Renders `renderTrue` when source is truthy, `renderFalse` otherwise. */
+declare class MatchNode extends Renderable {
+  mountInto(parent: Node, beforeNode: Node | null): void;
+  unmount(): void;
+  renderToString(render: (value: unknown) => string): string;
+}
+
+/** Conditional rendering. The source can be a reactive value, a predicate function, or any raw truthy/falsy value. */
 export function when(
-  source: ReactiveSource<any> | unknown,
+  source: ReactiveSource<any> | (() => unknown) | unknown,
   renderTrue: () => GranularChild,
   renderFalse?: () => GranularChild,
 ): WhenNode;
+
+/** Predicate-based conditional rendering with explicit reactive sources. */
+export function match<const T extends readonly unknown[]>(
+  sources: T,
+  predicate: (...values: { [K in keyof T]: InferReactiveValue<T[K]> }) => unknown,
+  renderTrue: () => GranularChild,
+  renderFalse?: () => GranularChild,
+): MatchNode;
+
+/** Predicate-based conditional rendering with explicit reactive sources. */
+export function match<T>(
+  sources: MatchSource<T>,
+  predicate: (value: InferReactiveValue<MatchSource<T>>) => unknown,
+  renderTrue: () => GranularChild,
+  renderFalse?: () => GranularChild,
+): MatchNode;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  DOM — Lists

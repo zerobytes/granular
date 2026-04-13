@@ -2,7 +2,11 @@ import { Renderable } from './renderable.js';
 import { Renderer } from './renderer.js';
 import { ElementNode } from '../dom/element.js';
 import { isSignal, readSignal } from '../reactivity/signal.js';
-import { isState, isStatePath, readState } from '../reactivity/state.js';
+import { isState, isStatePath, isComputed, readState } from '../reactivity/state.js';
+
+function isRenderableLike(value) {
+  return !!value && typeof value === 'object' && typeof value.renderToString === 'function';
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -17,13 +21,12 @@ function renderValue(value, render) {
   if (value == null || value === false) return '';
   if (Array.isArray(value)) return value.map((v) => render(v)).join('');
   if (isSignal(value)) return render(readSignal(value));
-  if (isState(value) || isStatePath(value)) return render(readState(value));
+  if (isState(value) || isStatePath(value) || isComputed(value)) return render(readState(value));
   if (value instanceof Renderable && typeof value.renderToString === 'function') {
     return value.renderToString(render);
   }
-  if (value instanceof ElementNode) {
-    return value.renderToString(render);
-  }
+  if (value instanceof ElementNode) return value.renderToString(render);
+  if (isRenderableLike(value)) return value.renderToString(render);
   if (Renderer.isDomNode(value)) {
     return value.outerHTML || '';
   }

@@ -291,7 +291,7 @@ export class ElementNode extends Renderable {
       let value = rawValue;
       if (isWhen(value)) value = readWhenValue(value);
       if (isSignal(value)) value = readSignal(value);
-      if (isState(value) || isStatePath(value)) value = readState(value);
+      if (isState(value) || isStatePath(value) || isComputed(value)) value = readState(value);
 
       if (key === 'style') {
         if (value && typeof value === 'object') {
@@ -318,7 +318,7 @@ export class ElementNode extends Renderable {
       if (key === 'value' && lower === 'input' && props.format != null) {
         const resolvedFormat = isSignal(props.format)
           ? readSignal(props.format)
-          : isState(props.format) || isStatePath(props.format)
+          : isState(props.format) || isStatePath(props.format) || isComputed(props.format)
             ? readState(props.format)
             : props.format;
         const formatConfig = normalizeInputFormat(resolvedFormat);
@@ -385,19 +385,19 @@ export class ElementNode extends Renderable {
         this.#applyStyle(el, rawValue);
         continue;
       }
-      const props = { el, key, rawValue, formatConfig };
+      const propCtx = { el, key, rawValue, formatConfig };
       if (isWhen(rawValue)) {
-        this.#applyPropAsWhen(props);
+        this.#applyPropAsWhen(propCtx);
         continue;
       }
       if (isSignal(rawValue)) {
         if (key === 'value' && formatConfig) formatBound = true;
-        this.#applyPropAsSignal(props);
+        this.#applyPropAsSignal(propCtx);
         continue;
       }
       if (isState(rawValue) || isStatePath(rawValue)) {
         if (key === 'value' && formatConfig) formatBound = true;
-        this.#applyPropAsState(props)
+        this.#applyPropAsState(propCtx);
         continue;
       }
       if (key === 'value' && formatConfig) {

@@ -177,15 +177,23 @@ export function observableArray(initial = []) {
         const prevItems = t.slice();
         const removed = next < prev ? t.slice(next, prev) : [];
         const ctx = { array: proxy, op: 'length', args: [next], prevLength: prev, nextLength: next };
-        const ok = Reflect.set(t, prop, next, receiver);
-        if (ok && next < prev) {
+        if (next < prev) {
           const patch = { type: 'remove', index: next, count: prev - next, items: removed };
-          if (hub.emitBefore('remove', patch, ctx)) notify(patch, ctx);
+          if (!hub.emitBefore('remove', patch, ctx)) return true;
+          const ok = Reflect.set(t, prop, next, receiver);
+          if (ok) notify(patch, ctx);
+          return ok;
         }
-        if (ok && next > prev) {
-          notify({ type: 'reset', items: t.slice(), prevItems }, ctx);
+        if (next > prev) {
+          const nextItems = t.slice();
+          nextItems.length = next;
+          const patch = { type: 'reset', items: nextItems, prevItems };
+          if (!hub.emitBefore('reset', patch, ctx)) return true;
+          const ok = Reflect.set(t, prop, next, receiver);
+          if (ok) notify({ type: 'reset', items: t.slice(), prevItems }, ctx);
+          return ok;
         }
-        return ok;
+        return Reflect.set(t, prop, next, receiver);
       }
 
       const index = typeof prop === 'string' && /^\d+$/.test(prop) ? Number(prop) : null;
@@ -194,23 +202,35 @@ export function observableArray(initial = []) {
       const lenBefore = t.length;
       const prevValue = index < t.length ? t[index] : undefined;
       const ctx = { array: proxy, op: 'set', args: [prop, value], prevLength: t.length, nextLength: t.length };
-      const ok = Reflect.set(t, prop, value, receiver);
-      if (!ok) return false;
 
       if (index < lenBefore) {
         const patch = { type: 'set', index, value, prev: prevValue };
-        if (hub.emitBefore('set', patch, ctx)) notify(patch, ctx);
+        if (!hub.emitBefore('set', patch, ctx)) return true;
+        const ok = Reflect.set(t, prop, value, receiver);
+        if (!ok) return false;
+        notify(patch, ctx);
         return true;
       }
 
       if (index === lenBefore) {
         const patch = { type: 'insert', index, items: [value] };
+        ctx.nextLength = lenBefore + 1;
+        if (!hub.emitBefore('insert', patch, ctx)) return true;
+        const ok = Reflect.set(t, prop, value, receiver);
+        if (!ok) return false;
         ctx.nextLength = t.length;
-        if (hub.emitBefore('insert', patch, ctx)) notify(patch, ctx);
+        notify(patch, ctx);
         return true;
       }
 
       const prevItems = t.slice(0, lenBefore);
+      const nextItems = t.slice();
+      nextItems[index] = value;
+      ctx.nextLength = Math.max(lenBefore, index + 1);
+      const patch = { type: 'reset', items: nextItems, prevItems };
+      if (!hub.emitBefore('reset', patch, ctx)) return true;
+      const ok = Reflect.set(t, prop, value, receiver);
+      if (!ok) return false;
       notify({ type: 'reset', items: t.slice(), prevItems }, ctx);
       return true;
     },
@@ -249,4 +269,3 @@ export function observableArray(initial = []) {
 /**
  * @typedef {ObservableArrayPatchInsert|ObservableArrayPatchRemove|ObservableArrayPatchSet|ObservableArrayPatchReset} ObservableArrayPatch
  */
-

@@ -1,3 +1,5 @@
+import { trackDependency } from './tracker.js';
+
 const SIGNAL = Symbol('g.signal');
 const SIGNAL_MAP = Symbol('g.signal.map');
 
@@ -28,7 +30,7 @@ export function signal(initial, options) {
     for (const key of keys) {
       if (isObject(source[key]) && !Array.isArray(source[key])) {
         if (!source[key]) source[key] = {};
-        patchObject(source[key], next[key]);
+        changed = patchObject(source[key], next[key]) || changed;
         continue;
       }
       if (next[key] === source[key]) continue;
@@ -54,10 +56,9 @@ export function signal(initial, options) {
       return true;
     },
     patch(next) {
-      
       if (!isObject(next) || Array.isArray(next)) {
         return api.set(next, true);
-      };
+      }
       const prev = state.value;
       const source = structuredClone(prev);
       const changed = patchObject(source, next);
@@ -86,18 +87,35 @@ export function signal(initial, options) {
     },
   };
 
-  const proxy = new Proxy(api, {
+  let proxy = null;
+  const track = () => trackDependency(proxy, proxy);
+
+  proxy = new Proxy(api, {
     get(_target, prop) {
       if (prop === SIGNAL) return true;
       if (prop === 'value') return state.value;
-      if (prop === 'get') return api.get;
+      if (prop === 'get') {
+        return () => {
+          track();
+          return api.get();
+        };
+      }
       if (prop === 'set') return api.set;
       if (prop === 'patch') return api.patch;
       if (prop === 'subscribe') return api.subscribe;
       if (prop === 'before') return api.before;
-      if (prop === Symbol.toPrimitive) return () => state.value;
-      if (prop === 'valueOf') return () => state.value;
-      if (prop === 'toString') return () => String(state.value);
+      if (prop === Symbol.toPrimitive) return () => {
+        track();
+        return state.value;
+      };
+      if (prop === 'valueOf') return () => {
+        track();
+        return state.value;
+      };
+      if (prop === 'toString') return () => {
+        track();
+        return String(state.value);
+      };
 
       const value = state.value;
       if (Array.isArray(value) && prop === 'map') {

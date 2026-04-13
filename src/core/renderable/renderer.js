@@ -143,6 +143,13 @@ class ReactiveTextNode extends Renderable {
  * This is intentionally separate from the Renderable contract.
  */
 export class Renderer {
+  static isRenderableLike(value) {
+    return !!value &&
+      typeof value === 'object' &&
+      typeof value.mountInto === 'function' &&
+      typeof value.unmount === 'function';
+  }
+
   /**
    * @param {unknown} value
    * @returns {value is Node}
@@ -156,7 +163,7 @@ export class Renderer {
    * @returns {value is Renderable}
    */
   static isRenderable(value) {
-    return value instanceof Renderable;
+    return value instanceof Renderable || Renderer.isRenderableLike(value);
   }
 
   /**
@@ -211,4 +218,3 @@ export class Renderer {
     if (Renderer.isRenderable(value)) value.unmount();
   }
 }
-

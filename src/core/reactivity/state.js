@@ -1,7 +1,10 @@
-import { signal, setSignal, readSignal, subscribeSignal, patchSignal } from './signal.js';
+import { signal, setSignal, subscribeSignal, patchSignal } from './signal.js';
+import { trackDependency } from './tracker.js';
 
 const STATE = Symbol('g.state');
 const STATE_META = Symbol('g.state.meta');
+const TRACKED_STATE_PATHS = new WeakMap();
+let _pathCacheMax = 256;
 
 function isObject(value) {
   return value !== null && typeof value === 'object';
@@ -59,6 +62,36 @@ function resolveValue(adapter, path, root) {
     return fallback({ value, path, root: currentRoot });
   }
   return fallback;
+}
+
+function pathKey(path) {
+  return path.join('\u0000');
+}
+
+function getTrackedStatePath(adapter, path) {
+  let cache = TRACKED_STATE_PATHS.get(adapter);
+  if (!cache) {
+    cache = new Map();
+    TRACKED_STATE_PATHS.set(adapter, cache);
+  }
+  const key = pathKey(path);
+  let proxy = cache.get(key);
+  if (proxy) {
+    cache.delete(key);
+    cache.set(key, proxy);
+    return proxy;
+  }
+  proxy = createStateProxy(adapter, path);
+  cache.set(key, proxy);
+  if (cache.size > _pathCacheMax) {
+    cache.delete(cache.keys().next().value);
+  }
+  return proxy;
+}
+
+function trackStateAccess(adapter, path) {
+  const proxy = getTrackedStatePath(adapter, path);
+  trackDependency(proxy, proxy);
 }
 
 function setAtPath(obj, path, value) {
@@ -213,7 +246,8 @@ function createSetterProxy(adapter, basePath) {
 
 function createStateProxy(adapter, path = []) {
   const meta = { adapter, path };
-  return new Proxy(
+  let proxy = null;
+  proxy = new Proxy(
     {},
     {
       get(_t, prop) {
@@ -221,8 +255,9 @@ function createStateProxy(adapter, path = []) {
         if (prop === STATE_META) return meta;
         if (prop === 'get') {
           return (p) => {
-            if (p === undefined) return resolveValue(adapter, path);
-            return resolveValue(adapter, path.concat(splitPath(p)));
+            const fullPath = p === undefined ? path : path.concat(splitPath(p));
+            trackStateAccess(adapter, fullPath);
+            return resolveValue(adapter, fullPath);
           };
         }
         if (prop === 'set') {
@@ -251,9 +286,21 @@ function createStateProxy(adapter, path = []) {
         if (prop === 'mutate') {
           return (...args) => adapter.mutate?.(...args);
         }
-        if (prop === Symbol.toPrimitive) return () => resolveValue(adapter, path);
-        if (prop === 'valueOf') return () => resolveValue(adapter, path);
-        if (prop === 'toString') return () => String(resolveValue(adapter, path));
+        if (prop === Symbol.toPrimitive) return () => {
+          trackStateAccess(adapter, path);
+          return resolveValue(adapter, path);
+        };
+        if (prop === 'valueOf') return () => {
+          trackStateAccess(adapter, path);
+          return resolveValue(adapter, path);
+        };
+        if (prop === 'toString') return () => {
+          trackStateAccess(adapter, path);
+          return String(resolveValue(adapter, path));
+        };
+
+        const ownDesc = Object.getOwnPropertyDescriptor(_t, prop);
+        if (ownDesc && !ownDesc.configurable) return ownDesc.value;
 
         const current = resolveValue(adapter, path);
         if (Array.isArray(current) && prop === 'map') {
@@ -277,6 +324,7 @@ function createStateProxy(adapter, path = []) {
       },
     }
   );
+  return proxy;
 }
 
 export function state(initial) {
@@ -298,7 +346,7 @@ export function state(initial) {
 
   const adapter = {
     kind: 'state',
-    get: () => readSignal(rootSignal),
+    get: () => rootSignal.value,
     set: (next, changedPath) => {
       _changedPath = changedPath || null;
       return setSignal(rootSignal, next, true);
@@ -363,6 +411,7 @@ export function isStatePath(value) {
 export function readState(value) {
   const meta = value?.[STATE_META];
   if (!meta) return undefined;
+  trackStateAccess(meta.adapter, meta.path);
   return resolveValue(meta.adapter, meta.path);
 }
 
@@ -408,6 +457,10 @@ export function getMappedMeta(value) {
   const meta = value?.[STATE_META];
   if (!meta || !meta.mapFn) return null;
   return meta;
+}
+
+export function setPathCacheSize(max) {
+  _pathCacheMax = max;
 }
 
 export function withDefaults(target, defaults, options = {}) {
