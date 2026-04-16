@@ -122,6 +122,68 @@ test('when with function predicate re-discovers deps on branch change', async ()
   } finally { cleanup(); }
 });
 
+// ─── No re-render when predicate stays same ────────────────────────────
+
+test('when does NOT re-render the active branch when source changes but stays truthy', () => {
+  const cleanup = installDom();
+  try {
+    const root = document.createElement('div');
+    const count = signal(1);
+    let renders = 0;
+
+    const app = Div(when(count,
+      () => { renders++; return Span('truthy'); },
+      () => Span('falsy'),
+    ));
+    app.mountInto(root, null);
+    assert.equal(renders, 1);
+    assert.equal(root.textContent, 'truthy');
+
+    count.set(5);
+    assert.equal(renders, 1);
+
+    count.set(100);
+    assert.equal(renders, 1);
+
+    count.set(0);
+    assert.equal(root.textContent, 'falsy');
+
+    count.set(42);
+    assert.equal(renders, 2);
+    assert.equal(root.textContent, 'truthy');
+    app.unmount();
+  } finally { cleanup(); }
+});
+
+test('when does NOT re-render when source changes but stays falsy', () => {
+  const cleanup = installDom();
+  try {
+    const root = document.createElement('div');
+    const val = signal(0);
+    let falseRenders = 0;
+
+    const app = Div(when(val,
+      () => Span('on'),
+      () => { falseRenders++; return Span('off'); },
+    ));
+    app.mountInto(root, null);
+    assert.equal(falseRenders, 1);
+
+    val.set(false);
+    assert.equal(falseRenders, 1);
+
+    val.set(null);
+    assert.equal(falseRenders, 1);
+
+    val.set('');
+    assert.equal(falseRenders, 1);
+
+    val.set(1);
+    assert.equal(root.textContent, 'on');
+    app.unmount();
+  } finally { cleanup(); }
+});
+
 // ─── Static source ─────────────────────────────────────────────────────
 
 test('when with static truthy value always renders the true branch', () => {

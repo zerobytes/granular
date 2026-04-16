@@ -29,7 +29,9 @@ That means:
 
 - if predicate is truthy, mount `renderTrue()`
 - otherwise mount `renderFalse?.()`
-- each update fully replaces only the content inside the `when` anchor
+- if the source changes but the predicate stays the same (truthy→truthy or falsy→falsy), nothing happens — no cleanup, no re-render
+- branch swap only occurs when the predicate flips between truthy and falsy
+- on swap, the previous branch is fully unmounted and the new branch is mounted
 
 ## Attribute behavior
 

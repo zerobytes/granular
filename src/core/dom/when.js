@@ -23,6 +23,7 @@ export class WhenNode extends Renderable {
   #depMap = new Map();
   #stableHandler = null;
   #sourceEvaluation = null;
+  #lastPredicate = null;
   #updating = false;
   #pendingRecheck = false;
   #mountedValues = [];
@@ -51,6 +52,7 @@ export class WhenNode extends Renderable {
     this.#mounted = false;
     this.#clearSourceSubscriptions();
     this.#sourceEvaluation = null;
+    this.#lastPredicate = null;
     this.#updating = false;
     this.#pendingRecheck = false;
     this.#cleanup();
@@ -201,8 +203,10 @@ export class WhenNode extends Renderable {
   }
 
   #update() {
-    this.#cleanup();
     const predicate = this.#getSourceEvaluation().predicate;
+    if (this.#lastPredicate !== null && predicate === this.#lastPredicate) return;
+    this.#lastPredicate = predicate;
+    this.#cleanup();
     const value = predicate ? this.#renderTrue() : this.#renderFalse?.();
     const values = Renderer.normalize(value);
     this.#mountedValues = values;
