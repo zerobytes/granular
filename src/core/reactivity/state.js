@@ -253,14 +253,23 @@ function createStateProxy(adapter, path = []) {
       get(_t, prop) {
         if (prop === STATE) return true;
         if (prop === STATE_META) return meta;
-        if (prop === 'get') {
+
+        const isApiProp = prop === 'get' || prop === 'set' || prop === 'patch'
+          || prop === 'subscribe' || prop === 'before' || prop === 'mutate';
+        let dataOwns = false;
+        if (isApiProp) {
+          const val = resolveValue(adapter, path);
+          dataOwns = isObject(val) && Object.prototype.hasOwnProperty.call(val, prop);
+        }
+
+        if (prop === 'get' && !dataOwns) {
           return (p) => {
             const fullPath = p === undefined ? path : path.concat(splitPath(p));
             trackStateAccess(adapter, fullPath);
             return resolveValue(adapter, fullPath);
           };
         }
-        if (prop === 'set') {
+        if (prop === 'set' && !dataOwns) {
           return (...args) => {
             if (args.length === 0) return createSetterProxy(adapter, path);
             if (args.length === 1) {
@@ -274,16 +283,16 @@ function createStateProxy(adapter, path = []) {
             return adapter.set(setAtPath(adapter.get(), path, p), path);
           };
         }
-        if(prop === 'patch') {
+        if (prop === 'patch' && !dataOwns) {
           return adapter.patch;
         }
-        if (prop === 'subscribe') {
+        if (prop === 'subscribe' && !dataOwns) {
           return (fn) => adapter.subscribe(fn);
         }
-        if (prop === 'before') {
+        if (prop === 'before' && !dataOwns) {
           return adapter.before;
         }
-        if (prop === 'mutate') {
+        if (prop === 'mutate' && !dataOwns) {
           return (...args) => adapter.mutate?.(...args);
         }
         if (prop === Symbol.toPrimitive) return () => {

@@ -125,3 +125,57 @@ test('state set with immutable update replaces array', () => {
   s.items.set([4, 5]);
   assert.deepEqual(s.items.get(), [4, 5]);
 });
+
+// ─── Data property name collisions with API methods ────────────────────
+
+test('data property named "subscribe" is accessible as path, not the API method', () => {
+  const s = state({ event: { name: 'Conf', subscribe: 'https://example.com/register' } });
+  assert.equal(s.event.subscribe.get(), 'https://example.com/register');
+});
+
+test('data property named "get" is accessible as path, not the API method', () => {
+  const s = state({ request: { get: '/api/users', post: '/api/users' } });
+  assert.equal(s.request.get.get(), '/api/users');
+  assert.equal(s.request.post.get(), '/api/users');
+});
+
+test('data property named "set" is accessible as path', () => {
+  const s = state({ config: { set: 'value' } });
+  assert.equal(s.config.set.get(), 'value');
+});
+
+test('data property named "before" is accessible as path', () => {
+  const s = state({ step: { before: 'intro', after: 'summary' } });
+  assert.equal(s.step.before.get(), 'intro');
+});
+
+test('data property named "patch" is accessible as path', () => {
+  const s = state({ release: { patch: 3, minor: 2, major: 1 } });
+  assert.equal(s.release.patch.get(), 3);
+});
+
+test('data property named "mutate" is accessible as path', () => {
+  const s = state({ dna: { mutate: true, sequence: 'ATCG' } });
+  assert.equal(s.dna.mutate.get(), true);
+});
+
+test('API methods still work when data does NOT have colliding keys', () => {
+  const s = state({ name: 'Ana', age: 25 });
+  assert.equal(s.get().name, 'Ana');
+  s.set({ name: 'Bia', age: 30 });
+  assert.equal(s.get().name, 'Bia');
+  let notified = false;
+  const unsub = s.subscribe(() => { notified = true; });
+  s.set({ name: 'Cia', age: 35 });
+  assert.equal(notified, true);
+  unsub();
+});
+
+test('colliding property is reactive as a text child', () => {
+  const s = state({ event: { subscribe: 'free' } });
+  const changes = [];
+  after(s.event.subscribe).change((v) => changes.push(v));
+  s.event.subscribe.set('paid');
+  assert.equal(s.event.subscribe.get(), 'paid');
+  assert.deepEqual(changes, ['paid']);
+});
