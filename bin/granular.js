@@ -15,6 +15,7 @@ function printUsage() {
   console.log('       granular audit <path ...>');
   console.log('       granular create <appName> [--basic|--complete] [--template basic|router|ssr|ui]');
   console.log('       granular docs [--host 127.0.0.1] [--port 4178] [--open]');
+  console.log('       granular migrate [path] [--dry-run] [--steps a,b,c] [--skip x,y]');
 }
 
 function isTagCall(node) {
@@ -545,6 +546,12 @@ if (command === 'docs') {
   const { runModuleDocsServer } = await import(`file://${modulePath}`);
   await runModuleDocsServer(rest);
   process.exit(0);
+}
+
+if (command === 'migrate') {
+  const modulePath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../scripts/migrate.mjs');
+  const { runMigrate } = await import(`file://${modulePath}`);
+  process.exit(await runMigrate(rest));
 }
 
 console.error(`Unknown command: ${command}`);
