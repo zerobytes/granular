@@ -1,4 +1,5 @@
 import { EventHub } from '../events/event-hub.js';
+import { trackDependency } from '../reactivity/tracker.js';
 
 const ObservableArrayMeta = new WeakMap();
 
@@ -48,6 +49,8 @@ export function observableArray(initial = []) {
       if (prop === 'before') {
         return () => hub.phase('before');
       }
+
+      trackDependency(proxy, proxy);
 
       const value = Reflect.get(t, prop, receiver);
       if (typeof value !== 'function') return value;

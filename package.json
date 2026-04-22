@@ -34,6 +34,7 @@
     "test:watch": "node ./scripts/run-tests.mjs --watch",
     "test:coverage": "c8 --reporter=text --reporter=html node ./scripts/run-tests.mjs",
     "test:types": "tsc -p tsconfig.types.json --noEmit",
+    "prepublishOnly": "npm run build:minify",
     "lint:patterns": "node ./bin/granular.js lint .",
     "bench": "node ./benchmarks/runner.mjs",
     "bench:baseline": "node ./benchmarks/runner.mjs --out ./benchmarks/baseline.json",

@@ -1,0 +1,58 @@
+name: Publish to npm
+
+# Triggers automatically when a GitHub Release is published.
+# Requires repository secret NPM_TOKEN (an npm "Automation" token, which bypasses 2FA).
+#
+# How to release:
+#   1. Bump version in package.json
+#   2. Commit and push to main
+#   3. Create a GitHub Release (tag like v0.2.0). This workflow will publish automatically.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'npm dist-tag (default: latest)'
+        required: false
+        default: 'latest'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Verify package version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: package.json version ($PKG_VERSION) does not match release tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "Version match: $PKG_VERSION"
+
+      - name: Run tests
+        run: npm test --if-present
+
+      - name: Publish to npm
+        run: npm publish --access public --tag ${{ github.event.inputs.tag || 'latest' }} --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
