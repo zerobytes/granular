@@ -87,3 +87,23 @@ export function concat(...input) {
   if (!targets.length) return build();
   return after(targets).compute(build);
 }
+
+export function tpl(strings, ...values) {
+  const parts = [];
+  for (let i = 0; i < strings.length; i++) {
+    if (strings[i] !== '') parts.push(strings[i]);
+    if (i < values.length) parts.push(values[i]);
+  }
+  return concat(...parts, { separator: '', filterFalsy: false });
+}
+
+export function cls(strings, ...values) {
+  const parts = [];
+  for (let i = 0; i < strings.length; i++) {
+    if (strings[i] !== '') parts.push(strings[i]);
+    if (i < values.length) parts.push(values[i]);
+  }
+  const built = concat(...parts, { separator: '', filterFalsy: false });
+  if (typeof built === 'string') return built.replace(/\s+/g, ' ').trim();
+  return after(built).compute((str) => String(str ?? '').replace(/\s+/g, ' ').trim());
+}

@@ -49,6 +49,141 @@ test('granular lint exits cleanly when no anti-pattern is found', () => {
   assert.match(result.stdout, /No anti-patterns found/);
 });
 
+test('granular lint catches proxy comparison anti-pattern', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-lint-proxy-cmp-'));
+  const filePath = path.join(tempDir, 'comp.js');
+
+  fs.writeFileSync(filePath, `
+    import { Div } from '@granularjs/core';
+    import { splitPropsChildren, cx } from '../utils.js';
+    export function Popover(...args) {
+      const { props } = splitPropsChildren(args, { position: 'left' });
+      const { position } = props;
+      return Div({ className: cx(position === 'right' && 'is-right') });
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'lint', filePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /no-proxy-comparison/);
+});
+
+test('granular lint catches proxy truthy in logical operators', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-lint-truthy-'));
+  const filePath = path.join(tempDir, 'comp.js');
+
+  fs.writeFileSync(filePath, `
+    import { Div } from '@granularjs/core';
+    import { splitPropsChildren, cx } from '../utils.js';
+    export function Sg(...args) {
+      const { props } = splitPropsChildren(args);
+      const { scroll } = props;
+      return Div({ className: cx(scroll && 'is-scroll') });
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'lint', filePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /no-proxy-truthy/);
+});
+
+test('granular lint catches proxy coercion via String/Array.isArray', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-lint-coercion-'));
+  const filePath = path.join(tempDir, 'comp.js');
+
+  fs.writeFileSync(filePath, `
+    import { splitPropsChildren } from '../utils.js';
+    export function Cb(...args) {
+      const { props } = splitPropsChildren(args);
+      const { value, items } = props;
+      const a = String(value);
+      const b = Array.isArray(items);
+      return a + b;
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'lint', filePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /no-proxy-coercion/);
+});
+
+test('granular lint catches proxy passed as setTimeout delay', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-lint-arg-'));
+  const filePath = path.join(tempDir, 'comp.js');
+
+  fs.writeFileSync(filePath, `
+    import { splitPropsChildren } from '../utils.js';
+    export function Cb(...args) {
+      const { props } = splitPropsChildren(args);
+      const { timeout } = props;
+      setTimeout(() => {}, timeout);
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'lint', filePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /no-proxy-as-arg/);
+});
+
+test('granular lint allows proxy comparison inside after().compute', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-lint-safe-'));
+  const filePath = path.join(tempDir, 'comp.js');
+
+  fs.writeFileSync(filePath, `
+    import { Div, after } from '@granularjs/core';
+    import { splitPropsChildren } from '../utils.js';
+    export function Ok(...args) {
+      const { props } = splitPropsChildren(args);
+      const { position } = props;
+      return Div({ className: after(position).compute((p) => p === 'right' ? 'is-right' : '') });
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'lint', filePath], {
+    encoding: 'utf8',
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /No anti-patterns found/);
+});
+
+test('granular audit prints aggregated report', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'granular-audit-'));
+  fs.writeFileSync(path.join(tempDir, 'a.js'), `
+    import { Div, state } from '@granularjs/core';
+    const xs = state([1]);
+    export const A = () => Div(...xs);
+  `);
+  fs.writeFileSync(path.join(tempDir, 'b.js'), `
+    import { splitPropsChildren } from '../utils.js';
+    export function B(...args) {
+      const { props } = splitPropsChildren(args);
+      const { x } = props;
+      return x === 'a';
+    }
+  `);
+
+  const result = spawnSync(process.execPath, [cliPath, 'audit', tempDir], { encoding: 'utf8' });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /Granular Audit Report/);
+  assert.match(result.stdout, /Files analyzed:/);
+  assert.match(result.stdout, /Findings by rule:/);
+  assert.match(result.stdout, /Top offenders:/);
+});
+
 test('granular docs serves the module docs viewer', async () => {
   const child = spawn(process.execPath, [cliPath, 'docs', '--host', '127.0.0.1', '--port', '0'], {
     stdio: ['ignore', 'pipe', 'pipe'],

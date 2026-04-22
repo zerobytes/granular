@@ -25,6 +25,32 @@ type GranularChild =
 type ReactiveSource<T = any> = Signal<T> | State<T> | Computed<T>;
 type ReactiveTarget = Signal<any> | State<any> | ObservableArray<any>;
 
+/**
+ * Reactive<T> — a value-or-source contract for component props.
+ *
+ * Accepts a plain T value or any reactive source carrying a T:
+ *   - `Signal<T>` / `State<T>` / `Computed<T>`
+ *
+ * Used by component prop interfaces to indicate that a prop is "binding-safe":
+ * the component will resolve / subscribe to the source if reactive, or read it
+ * once if a literal value is passed.
+ */
+export type Reactive<T> = T | Signal<T> | State<T> | Computed<T>;
+
+/**
+ * MaybeReactive<T> — alias for Reactive<T>.
+ */
+export type MaybeReactive<T> = Reactive<T>;
+
+/**
+ * UnwrapReactive<T> — extracts the underlying value type from a Reactive<T>.
+ */
+export type UnwrapReactive<T> =
+  T extends Signal<infer V> ? V :
+  T extends State<infer V> ? V :
+  T extends Computed<infer V> ? V :
+  T;
+
 type InferReactiveValue<T> =
   T extends Signal<infer V> ? V :
   T extends State<infer V> ? V :

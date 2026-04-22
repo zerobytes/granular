@@ -1,5 +1,6 @@
 import { signal, setSignal, subscribeSignal, patchSignal } from './signal.js';
 import { trackDependency } from './tracker.js';
+import { notifyCoerce } from './dev-hooks.js';
 
 const STATE = Symbol('g.state');
 const STATE_META = Symbol('g.state.meta');
@@ -110,15 +111,16 @@ function setAtPath(obj, path, value) {
 }
 
 function createPathTrie() {
-  const root = { subs: null, children: null };
+  const root = { subs: null, children: null, path: [] };
 
   const getOrCreate = (path) => {
     let node = root;
-    for (const seg of path) {
+    for (let i = 0; i < path.length; i++) {
+      const seg = path[i];
       if (!node.children) node.children = new Map();
       let child = node.children.get(seg);
       if (!child) {
-        child = { subs: null, children: null };
+        child = { subs: null, children: null, path: path.slice(0, i + 1) };
         node.children.set(seg, child);
       }
       node = child;
@@ -137,9 +139,13 @@ function createPathTrie() {
   };
 
   const notifyNode = (node, next, prev) => {
-    if (node.subs) {
-      for (const fn of node.subs) fn(next, prev);
+    if (!node.subs || node.subs.size === 0) return;
+    if (node.path.length > 0) {
+      const nextValue = getAtPath(next, node.path);
+      const prevValue = getAtPath(prev, node.path);
+      if (nextValue === prevValue) return;
     }
+    for (const fn of node.subs) fn(next, prev);
   };
 
   const notifyDescendants = (node, next, prev) => {
@@ -295,16 +301,19 @@ function createStateProxy(adapter, path = []) {
         if (prop === 'mutate' && !dataOwns) {
           return (...args) => adapter.mutate?.(...args);
         }
-        if (prop === Symbol.toPrimitive) return () => {
+        if (prop === Symbol.toPrimitive) return (hint) => {
           trackStateAccess(adapter, path);
+          notifyCoerce('state', proxy, hint);
           return resolveValue(adapter, path);
         };
         if (prop === 'valueOf') return () => {
           trackStateAccess(adapter, path);
+          notifyCoerce('state', proxy, 'valueOf');
           return resolveValue(adapter, path);
         };
         if (prop === 'toString') return () => {
           trackStateAccess(adapter, path);
+          notifyCoerce('state', proxy, 'string');
           return String(resolveValue(adapter, path));
         };
 

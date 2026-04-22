@@ -380,14 +380,16 @@ export class QueryClient {
     const keyStr = normalizeKey(options.key);
     const existing = this.#queries.get(keyStr);
     if (existing) {
-      existing.ensure();
+      const p = existing.ensure();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
       return existing;
     }
 
     const q = new Query(options);
     q.setGcHandler(() => this.#queries.delete(keyStr));
     this.#queries.set(keyStr, q);
-    q.ensure();
+    const p = q.ensure();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
     return q;
   }
 

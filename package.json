@@ -35,6 +35,9 @@
     "test:coverage": "c8 --reporter=text --reporter=html node ./scripts/run-tests.mjs",
     "test:types": "tsc -p tsconfig.types.json --noEmit",
     "lint:patterns": "node ./bin/granular.js lint .",
+    "bench": "node ./benchmarks/runner.mjs",
+    "bench:baseline": "node ./benchmarks/runner.mjs --out ./benchmarks/baseline.json",
+    "bench:check": "node ./benchmarks/runner.mjs --baseline ./benchmarks/baseline.json --threshold 0.30 --fail-on-regression",
     "version": "npm run build:minify && git add -A",
     "postversion": "git push && git push origin v$(node -p \"require('./package.json').version\")"
   },
@@ -42,6 +45,7 @@
     "@babel/parser": "^7.28.0",
     "@babel/traverse": "^7.28.0",
     "c8": "^10.1.3",
+    "fast-check": "^4.7.0",
     "jsdom": "^26.1.0",
     "typescript": "^5.9.2"
   },

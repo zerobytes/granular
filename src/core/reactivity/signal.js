@@ -1,4 +1,5 @@
 import { trackDependency } from './tracker.js';
+import { notifyCoerce } from './dev-hooks.js';
 
 const SIGNAL = Symbol('g.signal');
 const SIGNAL_MAP = Symbol('g.signal.map');
@@ -104,16 +105,19 @@ export function signal(initial, options) {
       if (prop === 'patch') return api.patch;
       if (prop === 'subscribe') return api.subscribe;
       if (prop === 'before') return api.before;
-      if (prop === Symbol.toPrimitive) return () => {
+      if (prop === Symbol.toPrimitive) return (hint) => {
         track();
+        notifyCoerce('signal', proxy, hint);
         return state.value;
       };
       if (prop === 'valueOf') return () => {
         track();
+        notifyCoerce('signal', proxy, 'valueOf');
         return state.value;
       };
       if (prop === 'toString') return () => {
         track();
+        notifyCoerce('signal', proxy, 'string');
         return String(state.value);
       };
 

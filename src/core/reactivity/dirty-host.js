@@ -3,6 +3,7 @@ import { INTERNAL } from '../internal/symbols.js';
 import { Renderable } from '../renderable/renderable.js';
 import { isObservableArray } from '../collections/observable-array.js';
 import { EventHub } from '../events/event-hub.js';
+import { scheduler, FLUSH_HOOK } from './scheduler.js';
 
 /**
  * Base class that provides:
@@ -153,10 +154,12 @@ export class DirtyHost extends Renderable {
   #scheduleFlush() {
     if (this.#scheduled) return;
     this.#scheduled = true;
-    queueMicrotask(() => {
-      this.#scheduled = false;
-      this.update();
-    });
+    scheduler.schedule(this);
+  }
+
+  [FLUSH_HOOK]() {
+    this.#scheduled = false;
+    this.update();
   }
 }
 

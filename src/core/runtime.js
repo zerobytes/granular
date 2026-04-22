@@ -5,9 +5,30 @@ export { state, isState, isStatePath, isComputed } from './reactivity/state.js';
 export { after, before, set, subscribe } from './reactivity/observe.js';
 export { resolve } from './reactivity/resolve.js';
 export { computed } from './reactivity/computed.js';
-export { concat } from './reactivity/concat.js';
+export {
+  derive,
+  equals,
+  differs,
+  like,
+  unlike,
+  bigger,
+  smaller,
+  atLeast,
+  atMost,
+  not,
+  and,
+  or,
+  eq,
+  neq,
+  gt,
+  gte,
+  lt,
+  lte,
+} from './reactivity/helpers.js';
+export { concat, tpl, cls } from './reactivity/concat.js';
 export { persist } from './reactivity/persist.js';
 export { form } from './forms/form.js';
+export { formSchema } from './forms/schema.js';
 export { list } from './dom/list.js';
 export { match } from './dom/match.js';
 export { when, isWhen } from './dom/when.js';
@@ -23,6 +44,8 @@ export { QueryClient } from './query/query-client.js';
 export { EventHub } from './events/event-hub.js';
 export { Router, createRouter, router } from './router/router.js';
 export { context } from './context.js';
+export { scheduler } from './reactivity/scheduler.js';
+export { profiler } from './reactivity/profiler.js';
 export { Elements } from './dom/tags.js';
 export * from './dom/tags.js';
 

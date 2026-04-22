@@ -6,19 +6,52 @@ import { signal, setSignal, isSignal, readSignal, subscribeSignal } from '../rea
 import { state, isState, isStatePath, readState, subscribeState } from '../reactivity/state.js';
 import { after } from '../reactivity/observe.js';
 
+function longestIncreasingSubsequence(arr) {
+  if (arr.length === 0) return [];
+  const tails = [];
+  const tailsIdx = [];
+  const prev = new Array(arr.length).fill(-1);
+
+  for (let i = 0; i < arr.length; i++) {
+    const x = arr[i];
+    if (x === -1) continue;
+    let lo = 0;
+    let hi = tails.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (tails[mid] < x) lo = mid + 1;
+      else hi = mid;
+    }
+    tails[lo] = x;
+    tailsIdx[lo] = i;
+    prev[i] = lo > 0 ? tailsIdx[lo - 1] : -1;
+  }
+
+  const result = new Array(tails.length);
+  let k = tails.length - 1;
+  let cursor = tailsIdx[k];
+  while (k >= 0 && cursor !== -1) {
+    result[k--] = cursor;
+    cursor = prev[cursor];
+  }
+  return result;
+}
+
 export class ListNode extends Renderable {
   #items;
   #renderItem;
+  #key;
   #anchor = null;
   #mounted = false;
   #unsub = null;
   #itemRefs = [];
   nodeType = 'granular-list-node'
 
-  constructor(items, renderItem) {
+  constructor(items, renderItem, options = {}) {
     super();
     this.#items = items;
     this.#renderItem = renderItem;
+    this.#key = typeof options?.key === 'function' ? options.key : null;
   }
 
   #isStateSource() {
@@ -65,7 +98,12 @@ export class ListNode extends Renderable {
   }
 
   #createItemState(index, item) {
-    if (this.#isStateSource()) return this.#items[String(index)];
+    // For keyed mode we cannot use the path-based sub-state of the parent
+    // (paths are positional but keys are content-based, so a moved row would
+    // keep listening to the wrong path and a content swap would recurse
+    // through the parent state's subscriber). Always use an independent
+    // local state for keyed lists.
+    if (this.#isStateSource() && !this.#key) return this.#items[String(index)];
     return state(item);
   }
 
@@ -106,17 +144,16 @@ export class ListNode extends Renderable {
     }
 
     if (this.#isStateSource()) {
-      let lastLen = (readState(this.#items) || []).length;
-      this.#unsub = subscribeState(this.#items, (next) => {
-        const nextArr = Array.isArray(next) ? next : [];
-        const nextLen = nextArr.length;
-        if (nextLen === lastLen) return;
-        if (nextLen > lastLen) {
-          for (let i = lastLen; i < nextLen; i++) this.#insert(i, nextArr[i]);
-        } else {
-          this.#remove(nextLen, lastLen - nextLen);
-        }
-        lastLen = nextLen;
+      let scheduled = false;
+      this.#unsub = subscribeState(this.#items, () => {
+        if (scheduled) return;
+        scheduled = true;
+        queueMicrotask(() => {
+          scheduled = false;
+          if (!this.#mounted) return;
+          const next = readState(this.#items);
+          this.#reset(Array.isArray(next) ? next : []);
+        });
       });
     }
   }
@@ -148,15 +185,118 @@ export class ListNode extends Renderable {
   }
 
   #reset(items) {
+    if (this.#key && this.#itemRefs.length > 0) {
+      this.#reconcileKeyed(items);
+      return;
+    }
     if (items.length === this.#itemRefs.length) {
-      for (let i = 0; i < items.length; i++) {
-        const ref = this.#itemRefs[i];
-        if (ref?.state) ref.state.set(items[i]);
+      // For state sources without a key, sub-state proxies path-track
+      // automatically — calling .set() would recurse through the parent
+      // state's subscriber.
+      const skipSet = this.#isStateSource();
+      if (!skipSet) {
+        for (let i = 0; i < items.length; i++) {
+          const ref = this.#itemRefs[i];
+          if (ref?.state) ref.state.set(items[i]);
+        }
       }
       return;
     }
     this.#cleanup();
     this.#mountAll(items);
+  }
+
+  #reconcileKeyed(nextItems) {
+    const oldByKey = new Map();
+    for (let i = 0; i < this.#itemRefs.length; i++) {
+      const ref = this.#itemRefs[i];
+      oldByKey.set(ref.key, { ref, oldIndex: i });
+    }
+
+    const nextRefs = new Array(nextItems.length);
+    const oldIndexes = new Array(nextItems.length);
+    const reusedKeys = new Set();
+
+    for (let i = 0; i < nextItems.length; i++) {
+      const item = nextItems[i];
+      const key = this.#key(item, i);
+      const existing = oldByKey.get(key);
+      if (existing) {
+        existing.ref.state?.set(item);
+        nextRefs[i] = existing.ref;
+        oldIndexes[i] = existing.oldIndex;
+        reusedKeys.add(key);
+      } else {
+        nextRefs[i] = null;
+        oldIndexes[i] = -1;
+      }
+    }
+
+    for (const ref of this.#itemRefs) {
+      if (!reusedKeys.has(ref.key)) {
+        if (ref.syncUnsub) ref.syncUnsub();
+        for (const r of ref.renderables) Renderer.unmount(r);
+        for (const n of ref.nodes) if (n.parentNode) n.remove();
+      }
+    }
+
+    const lis = new Set(longestIncreasingSubsequence(oldIndexes));
+    const parent = this.#anchor.parentNode;
+
+    for (let i = nextItems.length - 1; i >= 0; i--) {
+      const refNode = i + 1 < nextRefs.length
+        ? this.#firstNodeOfRef(nextRefs[i + 1])
+        : this.#anchor;
+
+      if (nextRefs[i] === null) {
+        const item = nextItems[i];
+        const key = this.#key(item, i);
+        nextRefs[i] = this.#createRef(i, item, key);
+        this.#mountRefBefore(nextRefs[i], parent, refNode);
+      } else if (!lis.has(i)) {
+        for (const n of nextRefs[i].nodes) parent.insertBefore(n, refNode);
+      }
+    }
+
+    this.#itemRefs = nextRefs;
+    for (let i = 0; i < this.#itemRefs.length; i++) {
+      const ref = this.#itemRefs[i];
+      if (ref.index) setSignal(ref.index, i);
+    }
+  }
+
+  #firstNodeOfRef(ref) {
+    if (!ref || !ref.nodes.length) return this.#anchor;
+    return ref.nodes[0];
+  }
+
+  #createRef(index, item, key) {
+    const itemState = this.#createItemState(index, item);
+    const indexSignal = signal(index);
+    const rendered = this.#renderItem ? this.#renderItem(itemState, indexSignal) : item;
+    const renderables = Renderer.normalize(rendered);
+    return { nodes: [], renderables, state: itemState, index: indexSignal, key };
+  }
+
+  #mountRefBefore(ref, parent, refNode) {
+    const marker = document.createTextNode('');
+    parent.insertBefore(marker, refNode);
+    for (const r of ref.renderables) {
+      if (Renderer.isRenderable(r)) {
+        r.mountInto(parent, refNode);
+      } else if (Renderer.isDomNode(r)) {
+        parent.insertBefore(r, refNode);
+      }
+    }
+    const nodes = [];
+    let cur = marker.nextSibling;
+    while (cur && cur !== refNode) {
+      nodes.push(cur);
+      cur = cur.nextSibling;
+    }
+    marker.remove();
+    ref.nodes = nodes;
+    this.#wireSyncToObservableArray(ref);
   }
 
   #refNodeAt(index) {
@@ -194,7 +334,13 @@ export class ListNode extends Renderable {
     }
     marker.remove();
 
-    const ref = { nodes, renderables, state: itemState, index: indexSignal };
+    const ref = {
+      nodes,
+      renderables,
+      state: itemState,
+      index: indexSignal,
+      key: this.#key ? this.#key(item, index) : null,
+    };
     this.#itemRefs.splice(index, 0, ref);
     this.#wireSyncToObservableArray(ref);
   }
@@ -225,7 +371,13 @@ export class ListNode extends Renderable {
       for (let j = startLen; j < fragment.childNodes.length; j++) {
         nodes.push(fragment.childNodes[j]);
       }
-      newRefs.push({ nodes, renderables, state: itemState, index: indexSignal });
+      newRefs.push({
+        nodes,
+        renderables,
+        state: itemState,
+        index: indexSignal,
+        key: this.#key ? this.#key(item, idx) : null,
+      });
     }
 
     parent.insertBefore(fragment, refNode);
@@ -260,6 +412,6 @@ export class ListNode extends Renderable {
   }
 }
 
-export function list(items, renderItem) {
-  return new ListNode(items, renderItem);
+export function list(items, renderItem, options) {
+  return new ListNode(items, renderItem, options);
 }

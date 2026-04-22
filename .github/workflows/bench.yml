@@ -1,0 +1,52 @@
+name: Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'benchmarks/**'
+      - 'package.json'
+  workflow_dispatch: {}
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          path: pr
+
+      - name: Checkout base (main)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jsdom (PR)
+        working-directory: pr
+        run: npm install --no-save jsdom
+
+      - name: Install jsdom (base)
+        working-directory: base
+        run: npm install --no-save jsdom
+
+      - name: Run baseline benchmarks (base branch)
+        working-directory: base
+        run: node ./benchmarks/runner.mjs --out ../baseline.json
+
+      - name: Run PR benchmarks vs baseline
+        working-directory: pr
+        run: node ./benchmarks/runner.mjs --baseline ../baseline.json --threshold 0.30 --fail-on-regression
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-baseline
+          path: baseline.json
