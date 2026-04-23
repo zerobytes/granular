@@ -15,7 +15,7 @@ function printUsage() {
   console.log('       granular audit <path ...>');
   console.log('       granular create <appName> [--basic|--complete] [--template basic|router|ssr|ui]');
   console.log('       granular docs [--host 127.0.0.1] [--port 4178] [--open]');
-  console.log('       granular migrate [path] [--dry-run] [--steps a,b,c] [--skip x,y]');
+  console.log('       granular migrate <source> [--out <path>] [--force] [--dry-run] [--steps a,b,c] [--skip x,y]');
 }
 
 function isTagCall(node) {

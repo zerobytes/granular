@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 
 const STEPS = [
   'discover',
+  'clone',
   'deps',
   'config',
   'codemods',
@@ -29,14 +30,28 @@ const CODEMODS_ORDERED = [
 ];
 
 const SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx']);
-const IGNORE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', '.cache']);
+const IGNORE_DIRS = new Set([
+  'node_modules', '.git', 'dist', 'build', 'out',
+  '.next', '.cache', '.turbo', '.vite', 'coverage',
+]);
 
 function parseArgs(argv) {
-  const args = { positional: [], dryRun: false, steps: null, skip: new Set(), help: false };
+  const args = {
+    positional: [],
+    out: null,
+    force: false,
+    dryRun: false,
+    steps: null,
+    skip: new Set(),
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--dry-run') args.dryRun = true;
+    else if (a === '--force' || a === '-f') args.force = true;
+    else if (a === '--out' || a === '-o') args.out = argv[++i] || null;
+    else if (a.startsWith('--out=')) args.out = a.slice(6);
     else if (a === '--steps') args.steps = (argv[++i] || '').split(',').filter(Boolean);
     else if (a.startsWith('--steps=')) args.steps = a.slice(8).split(',').filter(Boolean);
     else if (a === '--skip') for (const s of (argv[++i] || '').split(',').filter(Boolean)) args.skip.add(s);
@@ -47,11 +62,30 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log('Usage: granular migrate [path] [--dry-run] [--steps a,b,c] [--skip x,y]');
+  console.log('Usage: granular migrate <source> [--out <path>] [--force] [--dry-run] [--steps a,b,c] [--skip x,y]');
   console.log('');
-  console.log('Steps: ' + STEPS.join(', '));
-  console.log('Codemods (run in this order):');
+  console.log('Migrates a React project to Granular. Always writes to a NEW folder ');
+  console.log('so the source tree stays intact for diffing.');
+  console.log('');
+  console.log('Arguments:');
+  console.log('  <source>        Path to the React project to migrate (e.g. ./my-react-app)');
+  console.log('');
+  console.log('Options:');
+  console.log('  --out, -o <p>   Destination folder. Default: "<source>-granular"');
+  console.log('  --force, -f     Overwrite the destination folder if it already exists');
+  console.log('  --dry-run       Plan the migration without writing any files');
+  console.log('  --steps a,b,c   Run only the listed steps (default: all)');
+  console.log('  --skip x,y      Skip the listed steps');
+  console.log('');
+  console.log('Steps:    ' + STEPS.join(', '));
+  console.log('Codemods (in this order):');
   for (const t of CODEMODS_ORDERED) console.log('  ' + t);
+  console.log('');
+  console.log('Examples:');
+  console.log('  granular migrate ./my-react-app');
+  console.log('  granular migrate ./my-react-app --out ./my-granular-app');
+  console.log('  granular migrate ./my-react-app --dry-run');
+  console.log('  granular migrate ./my-react-app --out /tmp/preview --force');
 }
 
 function discover(rootDir) {
@@ -70,6 +104,41 @@ function discover(rootDir) {
     }
   }
   return files.sort();
+}
+
+function isInsidePath(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function copyTree(srcRoot, dstRoot) {
+  let copied = 0;
+  let skipped = 0;
+  const stack = [''];
+  while (stack.length) {
+    const rel = stack.pop();
+    const srcPath = path.join(srcRoot, rel);
+    const dstPath = path.join(dstRoot, rel);
+    const stat = fs.statSync(srcPath);
+    if (stat.isDirectory()) {
+      const base = path.basename(srcPath);
+      if (rel !== '' && IGNORE_DIRS.has(base)) { skipped++; continue; }
+      fs.mkdirSync(dstPath, { recursive: true });
+      for (const e of fs.readdirSync(srcPath)) stack.push(path.join(rel, e));
+    } else if (stat.isFile()) {
+      fs.copyFileSync(srcPath, dstPath);
+      copied++;
+    }
+  }
+  return { copied, skipped };
+}
+
+function rmTree(p) {
+  fs.rmSync(p, { recursive: true, force: true });
+}
+
+function isEmptyDir(p) {
+  try { return fs.readdirSync(p).length === 0; } catch { return true; }
 }
 
 function tryRequire(id, fallbackPaths) {
@@ -202,17 +271,25 @@ function runStaticAnalysis(name, rootDir, report) {
   report[name] = { status: res.status === 0 ? 'clean' : 'findings', exit: res.status, stdout: res.stdout, stderr: res.stderr };
 }
 
-function writeReport(rootDir, report) {
+function writeReport(sourceDir, destDir, report) {
   const lines = [];
   lines.push('# Granular Migration Report');
   lines.push('');
   lines.push(`Generated: ${new Date().toISOString()}`);
-  lines.push(`Root: ${rootDir}`);
+  lines.push(`Source:    ${sourceDir}`);
+  lines.push(`Output:    ${destDir}`);
   lines.push('');
 
   lines.push('## Discover');
-  lines.push(`Files scanned: ${report.discover.total}`);
+  lines.push(`Source files scanned: ${report.discover.total}`);
   lines.push('');
+
+  if (report.clone) {
+    lines.push('## Clone');
+    lines.push(`Files copied: ${report.clone.copied}`);
+    lines.push(`Directories skipped (ignored): ${report.clone.skipped}`);
+    lines.push('');
+  }
 
   lines.push('## Dependencies (package.json)');
   if (report.deps.length === 0) lines.push('No package.json processed.');
@@ -261,24 +338,74 @@ function writeReport(rootDir, report) {
   lines.push('');
 
   lines.push('## Next steps');
-  lines.push('1. `npm install` to fetch the new Granular dependencies.');
-  lines.push('2. Search for `TODO[granular-codemod]` comments and resolve each one.');
-  lines.push('3. Re-run `granular lint .` until clean.');
-  lines.push('4. Run your test suite. Reactive sources read inside JSX still need to be wrapped in `derive()` or `when()` if they were used as plain JS values in React.');
+  lines.push(`1. \`cd ${path.relative(process.cwd(), destDir) || '.'}\``);
+  lines.push('2. `npm install` to fetch the new Granular dependencies.');
+  lines.push('3. Search for `TODO[granular-codemod]` comments and resolve each one.');
+  lines.push('4. Run `granular lint .` until clean.');
+  lines.push('5. Diff against the source folder to review the migration:');
+  lines.push('   ```');
+  lines.push(`   diff -ruN ${path.relative(process.cwd(), sourceDir) || '.'} ${path.relative(process.cwd(), destDir) || '.'}`);
+  lines.push('   ```');
+  lines.push('6. Run your test suite. Reactive sources read inside JSX may still need to be wrapped in `derive()` or `when()`.');
   lines.push('');
 
-  const out = path.join(rootDir, 'MIGRATION_REPORT.md');
+  const out = path.join(destDir, 'MIGRATION_REPORT.md');
   fs.writeFileSync(out, lines.join('\n'));
   return out;
+}
+
+function resolveDestination(sourceDir, requested) {
+  if (requested) return path.resolve(requested);
+  return path.resolve(path.dirname(sourceDir), `${path.basename(sourceDir)}-granular`);
+}
+
+function prepareDestination(sourceDir, destDir, force, dryRun) {
+  if (sourceDir === destDir) {
+    throw new Error('Refusing to migrate in place: source and destination are the same path.');
+  }
+  if (isInsidePath(destDir, sourceDir)) {
+    throw new Error(`Destination "${destDir}" must not be inside source "${sourceDir}" (would recursively copy).`);
+  }
+  if (isInsidePath(sourceDir, destDir)) {
+    throw new Error(`Source "${sourceDir}" must not be inside destination "${destDir}".`);
+  }
+  if (fs.existsSync(destDir)) {
+    if (!isEmptyDir(destDir)) {
+      if (!force) {
+        throw new Error(
+          `Destination "${destDir}" already exists and is not empty.\n` +
+          `Re-run with --force to overwrite, or pass a different --out.`,
+        );
+      }
+      if (!dryRun) rmTree(destDir);
+    }
+  }
+  if (!dryRun) fs.mkdirSync(destDir, { recursive: true });
 }
 
 export async function runMigrate(argv) {
   const args = parseArgs(argv);
   if (args.help) { printHelp(); return 0; }
 
-  const rootDir = path.resolve(args.positional[0] || '.');
-  if (!fs.existsSync(rootDir) || !fs.statSync(rootDir).isDirectory()) {
-    console.error('Migrate target is not a directory: ' + rootDir);
+  if (args.positional.length === 0) {
+    console.error('granular migrate: missing <source> argument.');
+    console.error('');
+    printHelp();
+    return 1;
+  }
+
+  const sourceDir = path.resolve(args.positional[0]);
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    console.error(`granular migrate: source is not a directory: ${sourceDir}`);
+    return 1;
+  }
+
+  const destDir = resolveDestination(sourceDir, args.out);
+
+  try {
+    prepareDestination(sourceDir, destDir, args.force, args.dryRun);
+  } catch (err) {
+    console.error('granular migrate: ' + err.message);
     return 1;
   }
 
@@ -288,12 +415,15 @@ export async function runMigrate(argv) {
     return true;
   };
 
-  console.log(`granular migrate ${args.dryRun ? '(dry-run) ' : ''}→ ${rootDir}`);
+  console.log(`granular migrate ${args.dryRun ? '(dry-run) ' : ''}`);
+  console.log(`  source: ${sourceDir}`);
+  console.log(`  output: ${destDir}`);
   console.log('');
 
   const { runner, tsconfigT, packageJsonT } = loadCodemods();
   const report = {
     discover: { total: 0 },
+    clone: null,
     deps: [],
     config: [],
     codemods: [],
@@ -302,47 +432,72 @@ export async function runMigrate(argv) {
     audit: null,
   };
 
-  let files = [];
   if (enabled('discover')) {
     console.log('• discover');
-    files = discover(rootDir);
-    report.discover.total = files.length;
-    console.log(`  ${files.length} source files`);
+    const sourceFiles = discover(sourceDir);
+    report.discover.total = sourceFiles.length;
+    console.log(`  ${sourceFiles.length} source files`);
   }
+
+  if (enabled('clone')) {
+    console.log('• clone');
+    if (args.dryRun) {
+      const sourceFiles = discover(sourceDir);
+      report.clone = { copied: sourceFiles.length, skipped: 0, dryRun: true };
+      console.log(`  would copy ${sourceFiles.length} source files (and project metadata)`);
+    } else {
+      const stats = copyTree(sourceDir, destDir);
+      report.clone = stats;
+      console.log(`  copied ${stats.copied} files (skipped ${stats.skipped} ignored dirs)`);
+    }
+  } else if (!fs.existsSync(destDir) || isEmptyDir(destDir)) {
+    console.error('granular migrate: clone step skipped but destination is empty. ');
+    console.error('Re-run without --skip clone (or restore the destination tree).');
+    return 1;
+  }
+
+  const workRoot = args.dryRun ? sourceDir : destDir;
 
   if (enabled('deps')) {
     console.log('• deps');
-    applyDeps(rootDir, args.dryRun, packageJsonT, report);
+    applyDeps(workRoot, args.dryRun, packageJsonT, report);
   }
 
   if (enabled('config')) {
     console.log('• config');
-    applyConfig(rootDir, args.dryRun, runner, tsconfigT, report);
+    applyConfig(workRoot, args.dryRun, runner, tsconfigT, report);
   }
 
   if (enabled('codemods')) {
     console.log('• codemods');
-    if (!files.length) files = discover(rootDir);
-    runCodemodsAll(files, args.dryRun, runner, report);
+    const destFiles = discover(workRoot);
+    runCodemodsAll(destFiles, args.dryRun, runner, report);
   }
 
   if (enabled('lint')) {
     console.log('• lint');
-    runStaticAnalysis('lint', rootDir, report);
-    console.log('  ' + (report.lint.status === 'clean' ? 'clean' : 'findings'));
+    runStaticAnalysis('lint', workRoot, report);
+    console.log('  ' + (report.lint?.status === 'clean' ? 'clean' : 'findings'));
   }
 
   if (enabled('audit')) {
     console.log('• audit');
-    runStaticAnalysis('audit', rootDir, report);
+    runStaticAnalysis('audit', workRoot, report);
     console.log('  done');
   }
 
-  if (enabled('report')) {
-    const out = writeReport(rootDir, report);
+  if (enabled('report') && !args.dryRun) {
+    const out = writeReport(sourceDir, destDir, report);
     console.log('');
     console.log('Report: ' + out);
+  } else if (enabled('report') && args.dryRun) {
+    console.log('');
+    console.log('(dry-run) Report would be written to: ' + path.join(destDir, 'MIGRATION_REPORT.md'));
   }
+
+  console.log('');
+  console.log('Done. Source folder is untouched. Diff with:');
+  console.log(`  diff -ruN ${path.relative(process.cwd(), sourceDir) || '.'} ${path.relative(process.cwd(), destDir) || '.'}`);
 
   return 0;
 }
