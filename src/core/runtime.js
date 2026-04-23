@@ -42,7 +42,7 @@ export { Renderer } from './renderable/renderer.js';
 export { renderToString, hydrate } from './renderable/render-string.js';
 export { QueryClient } from './query/query-client.js';
 export { EventHub } from './events/event-hub.js';
-export { Router, createRouter, router } from './router/router.js';
+export { Router, RouterOutlet, createRouter, router } from './router/router.js';
 export { context } from './context.js';
 export { scheduler } from './reactivity/scheduler.js';
 export { profiler } from './reactivity/profiler.js';

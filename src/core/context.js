@@ -1,21 +1,25 @@
 import { signal, readSignal, setSignal, subscribeSignal } from './reactivity/signal.js';
 import { createStateFromAdapter } from './reactivity/state.js';
 import { Renderable } from './renderable/renderable.js';
+import { Renderer } from './renderable/renderer.js';
 
 class ContextProvider extends Renderable {
-  #child;
+  #children;
   #providerSignal;
   #consumers;
   #mountStack;
+  #providerStack;
   #mountTimeConsumers = [];
+  #providerStackEntry = null;
   #mounted = false;
 
-  constructor(child, providerSignal, consumers, mountStack) {
+  constructor(children, providerSignal, consumers, mountStack, providerStack) {
     super();
-    this.#child = child;
+    this.#children = children;
     this.#providerSignal = providerSignal;
     this.#consumers = consumers;
     this.#mountStack = mountStack;
+    this.#providerStack = providerStack;
   }
 
   mountInto(parent, beforeNode) {
@@ -24,15 +28,40 @@ class ContextProvider extends Renderable {
     for (const consumer of this.#consumers) {
       consumer._connect(this.#providerSignal);
     }
-    this.#mountStack.push({ signal: this.#providerSignal, consumers: this.#mountTimeConsumers });
-    this.#child.mountInto(parent, beforeNode);
+    const stackEntry = { signal: this.#providerSignal, consumers: this.#mountTimeConsumers };
+    this.#mountStack.push(stackEntry);
+    if (this.#providerStack) {
+      this.#providerStackEntry = stackEntry;
+      this.#providerStack.push(stackEntry);
+    }
+    for (const child of this.#children) {
+      if (child == null) continue;
+      if (Renderer.isRenderable(child)) {
+        child.mountInto(parent, beforeNode);
+      } else if (Renderer.isDomNode(child)) {
+        if (beforeNode) parent.insertBefore(child, beforeNode);
+        else parent.appendChild(child);
+      } else {
+        const node = document.createTextNode(String(child));
+        if (beforeNode) parent.insertBefore(node, beforeNode);
+        else parent.appendChild(node);
+      }
+    }
     this.#mountStack.pop();
   }
 
   unmount() {
     if (!this.#mounted) return;
     this.#mounted = false;
-    this.#child.unmount();
+    for (const child of this.#children) {
+      if (child && Renderer.isRenderable(child)) child.unmount();
+      else if (child && Renderer.isDomNode(child) && child.parentNode) child.parentNode.removeChild(child);
+    }
+    if (this.#providerStack && this.#providerStackEntry) {
+      const idx = this.#providerStack.lastIndexOf(this.#providerStackEntry);
+      if (idx !== -1) this.#providerStack.splice(idx, 1);
+      this.#providerStackEntry = null;
+    }
     for (const consumer of this.#consumers) {
       consumer._disconnect();
     }
@@ -47,7 +76,7 @@ class ContextProvider extends Renderable {
       consumer._connect(this.#providerSignal);
     }
     this.#mountStack.push({ signal: this.#providerSignal, consumers: this.#mountTimeConsumers });
-    const html = render(this.#child);
+    const html = this.#children.map((c) => render(c)).join('');
     this.#mountStack.pop();
     return html;
   }
@@ -148,14 +177,19 @@ export function context(defaultValue) {
 
     const providerState = createStateFromAdapter(adapter);
 
-    const serve = (renderable) => {
+    const serve = (...children) => {
       providerStack.pop();
       const pendingConsumers = pending.splice(0);
       for (const consumer of pendingConsumers) {
         consumer._connect(providerSignal);
       }
       const allConsumers = [...scopeConsumers, ...pendingConsumers];
-      return new ContextProvider(renderable, providerSignal, allConsumers, mountStack);
+      const flat = [];
+      for (const c of children) {
+        if (Array.isArray(c)) flat.push(...c);
+        else flat.push(c);
+      }
+      return new ContextProvider(flat, providerSignal, allConsumers, mountStack, providerStack);
     };
 
     return new Proxy(providerState, {

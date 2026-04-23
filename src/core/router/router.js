@@ -932,6 +932,39 @@ export class Router {
   }
 }
 
+/**
+ * RouterOutlet wraps an imperative `router.mount(parent)` call so the router
+ * can participate in a renderable tree (Provider → Provider → RouterOutlet).
+ * On `mountInto(parent)` it calls `router.mount(parent)`; on `unmount()` it
+ * calls `router.unmount()`. Use it when you need context providers (or any
+ * other Renderable) wrapping the routing tree.
+ */
+export class RouterOutlet {
+  #router;
+  #mountedParent = null;
+  constructor(router) {
+    if (!router || typeof router.mount !== 'function') {
+      throw new Error('RouterOutlet: expected a Router instance');
+    }
+    this.#router = router;
+  }
+  mountInto(parent) {
+    if (this.#mountedParent) return;
+    this.#mountedParent = parent;
+    this.#router.mount(parent);
+  }
+  unmount() {
+    if (!this.#mountedParent) return;
+    this.#mountedParent = null;
+    if (typeof this.#router.unmount === 'function') {
+      this.#router.unmount();
+    }
+  }
+  renderToString() {
+    return '';
+  }
+}
+
 export function createRouter(options) {
   const router = new Router(options);
   if (options?.routes && Array.isArray(options.routes)) {

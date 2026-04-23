@@ -52,12 +52,16 @@ class Profiler {
   onSchedule(host, priority) {
     if (!this.#enabled) return;
     this.#stats.schedules++;
-    this.#push({
+    const event = {
       type: 'schedule',
       time: this.#now(),
       host: this.#hostLabel(host),
       priority,
-    });
+    };
+    this.#push(event);
+    for (const fn of this.#subscribers) {
+      try { fn(event); } catch {}
+    }
   }
 
   onFlushStart(host) {

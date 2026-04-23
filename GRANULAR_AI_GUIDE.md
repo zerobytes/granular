@@ -183,6 +183,74 @@ Div('text1', 'text2', 'text3')
 Div({ id: 'a' }, 'text', { className: 'b' }, Span('nested'))
 ```
 
+### No Required Props — Drop Empty `{}` Arguments
+
+Granular DOM tags use `splitPropsChildren(args)`: any plain object becomes props, anything else becomes a child. There is **no positional/required argument** — the props object is purely optional.
+
+That means `Div({}, child)` (or `Card({}, child)`, `Stack({}, child)` from any UI library that follows the same convention) is pure noise. It allocates an empty object on every call, pressures GC, and adds visual clutter for zero benefit.
+
+```javascript
+// WRONG - empty props object is wasteful and noisy
+Div({},
+  Span({}, 'Hello'),
+)
+
+// CORRECT - just drop the empty object
+Div(
+  Span('Hello'),
+)
+```
+
+Only pass a props object when you actually have props to set:
+
+```javascript
+Div({ className: 'box' }, Span('with class'))
+Span({ style: { color: 'red' } }, 'red text')
+```
+
+### Code Style: First Argument On the Same Line
+
+Granular code is heavily nested by nature. To keep it readable, **put the first argument on the same line as the opening parenthesis**, then put each subsequent child on its own indented line. Hugging the opening paren saves a line per call and makes the tree shape obvious.
+
+```javascript
+// PREFERRED
+when(somePredicate,
+  () => SomeComponent(),
+  () => SomeOtherComponent(),
+)
+
+when(someOtherPredicate, () => SomeNewComponent())
+
+Div({ className: 'card' },
+  Div('Some content'),
+  Div('More content',
+    Span('inner 1'),
+    Span('inner 2'),
+    Span('inner 3'),
+  ),
+)
+
+list(items, (item) =>
+  Div({ className: 'row' },
+    Span(item.label),
+    Span(item.value),
+  ),
+)
+
+// AVOID - opening with a lone paren wastes a line on every call
+when(
+  somePredicate,
+  () => SomeComponent(),
+)
+
+Div(
+  { className: 'card' },
+  Div('Some content'),
+)
+```
+
+Short calls that fit on one line (no children, or a single short child) should stay on one line: `Span({ className: 'lbl' }, 'label')`, `Br()`, `Hr()`.
+
 ### Reactive Attributes
 
 All attributes automatically accept reactive values (state, signal, computed):
@@ -533,6 +601,156 @@ when(condition,
   null
 )
 ```
+
+The same rule applies to `match(sources, predicate, renderTrue, renderFalse?)` — the predicate and both branches must be functions.
+
+### Don't Wrap Whole Subtrees in `after().compute()`
+
+`after(x).compute(value => Tree(...))` rebuilds and remounts the entire returned subtree every time `x` changes. That defeats Granular's fine-grained reactivity — sibling text changes can re-mount whole cards.
+
+Use `compute()` only for:
+- a single derived primitive (string, number, class name, style value),
+- a small leaf node whose props depend on the value,
+- selecting between a few alternative components (real branch swap).
+
+For everything else, walk into the value with **state paths**, **`when()`**, and **`list()`** so that each leaf binds itself.
+
+```javascript
+// WRONG - any change to `incident` rebuilds the entire impact subtree
+const ImpactReadOnly = ({ incident }) =>
+  after(incident).compute((inc) => {
+    if (!inc?.impact) return null;
+    return Div(
+      Div(Span(inc.impact.description)),
+      Div(Span(`Users: ${inc.impact.usersAffected}`)),
+      ...inc.impact.platforms.map((p) => Span(p)),
+    );
+  });
+
+// CORRECT - render the structure once; let leaves bind themselves
+const ImpactReadOnly = ({ incident }) =>
+  Div(
+    Div(Span(incident.impact.description)),
+    Div(
+      after(incident.impact.usersAffected).compute((n) =>
+        Span(`Users: ${(n ?? 0).toLocaleString()}`),
+      ),
+    ),
+    list(incident.impact.platforms, (p) =>
+      Span(after(p).compute((v) => labelMap[v] || v)),
+    ),
+  );
+```
+
+Why this matters:
+
+- A leaf `Span(statePath)` updates only the text node, not its parent `<div>`.
+- `list(statePath, ...)` patches inserts/removes per item — existing rows stay mounted.
+- `after(leafPath).compute(fmt)` recomputes only when that leaf changes.
+- `when(statePath, ...)` only swaps branches when the predicate flips truthy↔falsy.
+
+Pull `compute()` as deep as possible toward the actual leaves that depend on the value.
+
+### Don't Gate Whole Subtrees on Base Object Existence
+
+`when(condition, ...)` is for **render-or-not-render** decisions. If the inner subtree should always be visible — even with empty/loading values — **don't wrap it in `when()`**. Render the structure once and let each leaf binding show empty/skeleton until data arrives.
+
+The most common abuse is gating an entire section on a base object's existence:
+
+```javascript
+// WRONG - the whole impact card disappears until `incident.impact` becomes truthy,
+// then mounts every child at once. Labels, structure, layout all flicker in.
+const ImpactCard = ({ incident }) =>
+  when(incident.impact, () =>
+    Div({ className: 'card' },
+      H3('Impact'),
+      Span(incident.impact.description),
+      after(incident.impact.usersAffected).compute((n) =>
+        Span((n ?? 0).toLocaleString()),
+      ),
+      list(incident.impact.platforms, (p) => Span(p)),
+    ),
+  )
+
+// CORRECT - render the Card always. Leaves bind to state paths and naturally
+// show empty/0 until data loads.
+const ImpactCard = ({ incident }) =>
+  Div({ className: 'card' },
+    H3('Impact'),
+    Span(incident.impact.description),
+    after(incident.impact.usersAffected).compute((n) =>
+      Span((n ?? 0).toLocaleString()),
+    ),
+    list(incident.impact.platforms, (p) => Span(p)),
+  )
+```
+
+Rule of thumb:
+
+- The field has a **label** or **structural role** (heading, container, separator) → render it always; values can be empty temporarily.
+- The element only makes sense **with a value** (an inline link icon, a stand-alone badge, a "Resolved at" timestamp with no fallback) → use `when(after(path).compute(v => !!v), ...)` or `when(statePath, ...)` to hide it.
+- The field is a **list** with a section header that becomes meaningless when empty → gate with `when(after(items).compute(a => a.length > 0), ...)`.
+
+If the structure is large and you're worried about the empty state looking bad, render a skeleton or placeholder leaf — never gate the whole subtree.
+
+### Prefer `&&` Over `cond ? X : null`
+
+Granular treats falsy child values (`null`, `undefined`, `false`) as "nothing" in tag children, array children, and compute return values. A ternary whose `else` branch is `null` is redundant noise — use `&&` instead.
+
+```javascript
+// WRONG - verbose ternary-to-null
+Div(
+  hasError ? Span(error) : null,
+  count > 0 ? Span(`${count} items`) : null,
+)
+
+// CORRECT - short-circuit && (Granular drops falsy children)
+Div(
+  hasError && Span(error),
+  count > 0 && Span(`${count} items`),
+)
+```
+
+This also works inside `after().compute()` callbacks and plain `.map()` bodies:
+
+```javascript
+after(error).compute((e) => e && Span(e))
+
+items.map((it) => it.active && Span(it.label))
+```
+
+For compound conditions, wrap in parens so `&&` does not steal earlier operands:
+
+```javascript
+// Good
+(a || b) && Component()
+
+// Bad - evaluates wrong
+a || b && Component()
+```
+
+#### When NOT to use `&&`
+
+1. `else` branch is not `null` — keep the ternary or rewrite with an early return:
+   ```javascript
+   flag ? Success() : Failure()
+   ```
+
+2. The condition is a **reactive `state`/`signal`/`StatePath`**, not a plain JS value. State paths are always truthy objects, so `statePath && X()` always returns `X()`. Use `when()`:
+   ```javascript
+   // WRONG - statePath is always truthy
+   incident.description && Span(incident.description)
+
+   // CORRECT - reactive gate
+   when(incident.description, () => Span(incident.description))
+   ```
+
+   Rule of thumb: inside `after().compute(val => ...)` and `.map()` callbacks you hold a plain unwrapped value → use `&&`. Outside those callbacks, with a `StatePath`/`signal`/`state` source → use `when()`.
+
+3. Returning non-DOM data (business values a caller inspects), keep the ternary:
+   ```javascript
+   const last = after(list).compute((items) => items.length ? items[items.length - 1] : null);
+   ```
 
 ---
 
@@ -1505,14 +1723,158 @@ list(items, (item) => Button({ size: item.size || 'sm' }));  // ❌ Always retur
 list(items, (item) => Button({ size: after(item.size).compute(s => s || 'sm') }));  // ✅
 ```
 
-### DON'T: Use Non-Arrow Functions in when()
+### DON'T: Use Non-Arrow Functions in when() / match()
 
 ```javascript
 // WRONG - executes immediately
 when(condition, HeavyComponent(), null)
+match(source, predicate, HeavyComponent(), null)
 
 // CORRECT - deferred execution
 when(condition, () => HeavyComponent(), () => null)
+match(source, (v) => v === 'x', () => HeavyComponent(), () => null)
+```
+
+### DON'T: Write `cond ? Component() : null` in Children
+
+Falsy children are dropped automatically. Use `&&` for the common conditional-render case (when the condition is a plain JS value):
+
+```javascript
+// WRONG
+Div(
+  hasError ? Span(error) : null,
+  items.length > 0 ? Pagination({ total }) : null,
+)
+
+// CORRECT
+Div(
+  hasError && Span(error),
+  items.length > 0 && Pagination({ total }),
+)
+```
+
+If the condition is a reactive `state`/`signal`/`StatePath`, use `when()` instead — `&&` always returns the right side because state objects are truthy.
+
+### DON'T: Use `state && Component()` (StatePath is always truthy)
+
+A reactive `state`/`signal`/`StatePath` reference is an object, so it is always truthy from JS's perspective. `statePath && X()` therefore always returns `X()` and never reactively hides anything. The same goes for `statePath ? A : B`.
+
+```javascript
+// WRONG - statePath is always truthy
+const open = state(false);
+Div(open && Modal())              // Modal always renders
+Div(open ? Open() : Closed())     // Open() always
+
+// CORRECT - reactive show/hide
+Div(when(open, () => Modal()))
+Div(when(open, () => Open(), () => Closed()))
+```
+
+### DON'T: Wrap Entire Subtrees in `after().compute()`
+
+```javascript
+// WRONG - one change to `data` rebuilds the whole tree
+after(data).compute((d) =>
+  Div(
+    Span(d.title),
+    Span(d.description),
+    list(d.items, ...),
+  )
+)
+
+// CORRECT - leaves bind directly, list/when handle structure
+Div(
+  Span(data.title),
+  Span(data.description),
+  list(data.items, ...),
+)
+```
+
+`compute()` should produce a small derived value (string, badge color, single leaf node). Reach for state paths, `when()`, and `list()` to render structures.
+
+### DON'T: Use `array.map(item => Tag(...))` for Reactive Arrays
+
+`array.map(item => Tag(...))` returns a static array of nodes. When the source array changes, the entire list rebuilds — items are unmounted and remounted instead of patched in place. Use `list(array, item => Tag(...))` for fine-grained patches (insert/remove/replace per item).
+
+The same applies inside `after(items).compute((items) => items.map(...))`: the shadowed `items` is the unwrapped value, but the *outer* `items` is still reactive — wrapping `compute()` around `.map()` is a roundabout way of saying `list()`. Use `list()` directly:
+
+```javascript
+// WRONG - rebuilds every node when items changes
+after(items).compute((items) =>
+  Div(...items.map((it) => Row(it)))
+)
+
+// CORRECT - patch-based updates
+Div(list(items, (it) => Row(it)))
+```
+
+The only acceptable case for `.map()` over a reactive array is when **nothing inside each item needs to be reactive** (the per-row content depends only on values that never change for that row). Even then, `list()` is usually clearer.
+
+### DON'T: Gate Whole Subtrees on a Base Object's Existence
+
+`when()` is for things that should NOT render at all when the predicate is falsy. Wrapping a large structure (cards, layouts, labeled fields) in `when(baseObject, () => ...)` is wrong — the structure should be visible from mount, with leaves naturally showing empty/0/skeleton until data loads.
+
+```javascript
+// WRONG - the entire impact section vanishes until `incident.impact` arrives
+when(incident.impact,
+  () => Div(
+    H3('Impact'),
+    Span(incident.impact.description),
+    list(incident.impact.platforms, (p) => Span(p)),
+    // ...many more nodes...
+  ),
+)
+
+// CORRECT - structure renders immediately, leaves bind individually
+Div(
+  H3('Impact'),
+  Span(incident.impact.description),
+  list(incident.impact.platforms, (p) => Span(p)),
+)
+```
+
+Reserve `when()` for elements that have no meaningful empty state.
+
+### DON'T: Pass an Empty Props Object `{}` as a Positional Argument
+
+Granular tags use `splitPropsChildren(args)` — there is **no required positional argument**. Empty `{}` objects are pure noise that allocate memory and add clutter.
+
+```javascript
+// WRONG
+Div({},
+  Span({}, 'Hello'),
+)
+
+// CORRECT
+Div(
+  Span('Hello'),
+)
+```
+
+Only pass a props object when it actually has props in it.
+
+### DON'T: Open Calls With a Lone Parenthesis
+
+Granular code is heavily nested. Putting the first argument on its own line wastes a line per call and obscures the tree shape. Hug the opening paren.
+
+```javascript
+// AVOID
+Div(
+  { className: 'card' },
+  Span(
+    { className: 'inner' },
+    'A',
+    'B',
+  ),
+)
+
+// PREFERRED
+Div({ className: 'card' },
+  Span({ className: 'inner' },
+    'A',
+    'B',
+  ),
+)
 ```
 
 ### DON'T: Forget Arrow Functions in after().compute() for DOM
@@ -1583,6 +1945,7 @@ Input({ value: text, onInput: e => text.set(e.target.value) })
 
 // === CONDITIONAL ===
 when(condition, () => TrueCase(), () => FalseCase())
+match(sources, (...vals) => predicate, () => TrueCase(), () => FalseCase())
 
 // === LIST ===
 // renderItem receives (itemState, indexSignal) - reactive wrappers

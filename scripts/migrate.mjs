@@ -17,8 +17,8 @@ const STEPS = [
 ];
 
 const CODEMODS_ORDERED = [
-  'useState-to-signal',
-  'useRef-to-signal',
+  'useState-to-state',
+  'useRef-to-state',
   'useMemo-to-derive',
   'useEffect-to-after',
   'useCallback-remove',
@@ -26,6 +26,9 @@ const CODEMODS_ORDERED = [
   'setState-updater',
   'array-map-to-list',
   'conditional-jsx-to-when',
+  'react-router-to-granular',
+  'react-namespace',
+  'react-component-to-variadic',
   'react-imports',
 ];
 
@@ -43,6 +46,7 @@ function parseArgs(argv) {
     dryRun: false,
     steps: null,
     skip: new Set(),
+    local: false,
     help: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -50,6 +54,7 @@ function parseArgs(argv) {
     if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--dry-run') args.dryRun = true;
     else if (a === '--force' || a === '-f') args.force = true;
+    else if (a === '--local') args.local = true;
     else if (a === '--out' || a === '-o') args.out = argv[++i] || null;
     else if (a.startsWith('--out=')) args.out = a.slice(6);
     else if (a === '--steps') args.steps = (argv[++i] || '').split(',').filter(Boolean);
@@ -76,6 +81,7 @@ function printHelp() {
   console.log('  --dry-run       Plan the migration without writing any files');
   console.log('  --steps a,b,c   Run only the listed steps (default: all)');
   console.log('  --skip x,y      Skip the listed steps');
+  console.log('  --local         Use local file: paths for @granularjs/* (dev only)');
   console.log('');
   console.log('Steps:    ' + STEPS.join(', '));
   console.log('Codemods (in this order):');
@@ -172,14 +178,25 @@ function loadCodemods() {
   return { runner, tsconfigT, packageJsonT };
 }
 
-function applyDeps(rootDir, dryRun, packageJsonT, report) {
+function resolveLocalPaths(rootDir) {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const monoRoot = path.resolve(here, '..', '..');
+  const candidate = (name) => path.resolve(monoRoot, name);
+  const toFile = (abs) => 'file:' + path.relative(rootDir, abs);
+  const out = {};
+  if (fs.existsSync(candidate('granular'))) out.coreVersion = toFile(candidate('granular'));
+  if (fs.existsSync(candidate('granular-jsx'))) out.jsxVersion = toFile(candidate('granular-jsx'));
+  return out;
+}
+
+function applyDeps(rootDir, dryRun, packageJsonT, report, opts = {}) {
   const pkgPath = path.join(rootDir, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     report.deps.push({ file: pkgPath, status: 'missing' });
     return;
   }
   const src = fs.readFileSync(pkgPath, 'utf8');
-  const { source, changed, error } = packageJsonT(src);
+  const { source, changed, error } = packageJsonT(src, opts);
   if (error) {
     report.deps.push({ file: pkgPath, status: 'error', error });
     return;
@@ -224,6 +241,97 @@ function applyConfig(rootDir, dryRun, runner, tsconfigT, report) {
       report.config.push({ file: p, status: dryRun ? 'preview' : 'changed' });
     }
   }
+}
+
+function stitchRouterImports(files, dryRun, report) {
+  const ROUTER_EXPORT_RE = /export\s+const\s+router\s*=\s*createRouter\s*\(/;
+  const PLACEHOLDER_RE = /(['"])\.?\/?router-TODO-fix-path\.jsx?\1/g;
+
+  let routerFile = null;
+  for (const f of files) {
+    if (!/\.[jt]sx?$/.test(f)) continue;
+    const src = fs.readFileSync(f, 'utf8');
+    if (ROUTER_EXPORT_RE.test(src)) { routerFile = f; break; }
+  }
+  if (!routerFile) return;
+
+  let stitched = 0;
+  for (const f of files) {
+    if (f === routerFile) continue;
+    if (!/\.[jt]sx?$/.test(f)) continue;
+    const src = fs.readFileSync(f, 'utf8');
+    if (!PLACEHOLDER_RE.test(src)) continue;
+    let rel = path.relative(path.dirname(f), routerFile).replace(/\\/g, '/');
+    if (!rel.startsWith('.')) rel = './' + rel;
+    const next = src.replace(/(['"])\.?\/?router-TODO-fix-path\.jsx?\1/g, (_, q) => q + rel + q);
+    if (next !== src) {
+      if (!dryRun) fs.writeFileSync(f, next);
+      stitched++;
+    }
+  }
+  if (stitched) {
+    console.log(`  router-stitch                ${stitched}/${files.length} files ${dryRun ? '(preview)' : ''}`);
+  }
+  report.codemods.push({ transform: 'router-stitch', changed: stitched, errors: 0, total: files.length });
+}
+
+function unwrapContextDeriveValue(files, dryRun, report) {
+  // After useMemo→derive ran, provider value declarations look like
+  //   const value = derive(() => ({ ... }));
+  //   return Ctx.scope(value).serve(...);
+  // The granular signal stores the derived computed verbatim, so consumers
+  // calling `Ctx.state().get()` would receive the computed object instead of
+  // the inner record. We strip the derive wrapper when its body is an object
+  // literal because component-scoped factories run once anyway.
+  const RE = /const\s+(\w+)\s*=\s*derive\s*\(\s*\(\s*\)\s*=>\s*\(\s*\{/g;
+  let unwrapped = 0;
+  for (const f of files) {
+    if (!/\.[jt]sx?$/.test(f)) continue;
+    const src = fs.readFileSync(f, 'utf8');
+    let touched = false;
+    let next = src;
+    let match;
+    RE.lastIndex = 0;
+    while ((match = RE.exec(src)) !== null) {
+      const varName = match[1];
+      const useRe = new RegExp(`\\.scope\\(\\s*${varName}\\s*\\)`);
+      if (!useRe.test(src)) continue;
+      const start = match.index + match[0].length - 1;
+      let depth = 0;
+      let i = start;
+      for (; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      const objLiteral = src.slice(start, i + 1);
+      let j = i + 1;
+      while (j < src.length && /\s/.test(src[j])) j++;
+      if (src[j] !== ')') continue;
+      let k = j + 1;
+      while (k < src.length && /\s/.test(src[k])) k++;
+      if (src[k] !== ')') continue;
+      let l = k + 1;
+      while (l < src.length && /\s/.test(src[l])) l++;
+      if (src[l] !== ';') continue;
+      const declStart = src.lastIndexOf('const', match.index + 5);
+      const declEnd = l + 1;
+      const replacement = `const ${varName} = ${objLiteral};`;
+      next = next.replace(src.slice(declStart, declEnd), replacement);
+      touched = true;
+    }
+    if (touched && next !== src) {
+      if (!dryRun) fs.writeFileSync(f, next);
+      unwrapped++;
+    }
+  }
+  if (unwrapped) {
+    console.log(`  unwrap-context-derive        ${unwrapped}/${files.length} files ${dryRun ? '(preview)' : ''}`);
+  }
+  report.codemods.push({ transform: 'unwrap-context-derive', changed: unwrapped, errors: 0, total: files.length });
 }
 
 function runCodemodsAll(files, dryRun, runner, report) {
@@ -460,7 +568,12 @@ export async function runMigrate(argv) {
 
   if (enabled('deps')) {
     console.log('• deps');
-    applyDeps(workRoot, args.dryRun, packageJsonT, report);
+    const depsOpts = args.local ? resolveLocalPaths(workRoot) : {};
+    if (args.local) {
+      const where = Object.entries(depsOpts).map(([k, v]) => `${k}=${v}`).join(' ');
+      console.log('  --local: ' + (where || '(no local packages found)'));
+    }
+    applyDeps(workRoot, args.dryRun, packageJsonT, report, depsOpts);
   }
 
   if (enabled('config')) {
@@ -472,6 +585,8 @@ export async function runMigrate(argv) {
     console.log('• codemods');
     const destFiles = discover(workRoot);
     runCodemodsAll(destFiles, args.dryRun, runner, report);
+    unwrapContextDeriveValue(destFiles, args.dryRun, report);
+    stitchRouterImports(destFiles, args.dryRun, report);
   }
 
   if (enabled('lint')) {

@@ -55,6 +55,7 @@ export {
   QueryClient,
   EventHub,
   Router,
+  RouterOutlet,
   createRouter,
   router,
   Elements,

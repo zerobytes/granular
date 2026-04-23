@@ -19,7 +19,7 @@ export async function bootstrap(ComponentClass, target) {
 
   let instance = null;
   try {
-    instance = new ComponentClass();
+    instance = new ComponentClass(el);
   } catch {
     instance = null;
   }
@@ -35,7 +35,12 @@ export async function bootstrap(ComponentClass, target) {
     }
   }
 
-  const root = ComponentClass();
+  const root = ComponentClass(el);
+  if (root === undefined || root === null) {
+    return {
+      unmount() {},
+    };
+  }
   const values = Renderer.normalize(root);
   for (const r of values) {
     if (Renderer.isRenderable(r)) {
