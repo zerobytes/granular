@@ -42,7 +42,8 @@ This guide is designed to help AI assistants understand and generate code for th
 │  Component re-renders on change  │  Component runs ONCE         │
 │  VDOM diffing                    │  Direct DOM updates          │
 │  useState causes re-render       │  state() updates only bindings│
-│  useEffect for side effects      │  after().change() for effects│
+│  useEffect(fn, deps)             │  after(deps).effect(fn)      │
+│  useEffect (changes only)        │  after(deps).change(fn)      │
 │  useMemo for optimization        │  after().compute() for derived│
 │  Implicit dependency tracking    │  Explicit reactive targets   │
 │  JSX template syntax             │  Pure JavaScript functions   │
@@ -371,6 +372,44 @@ after(name, age).change(([nextName, nextAge], [prevName, prevAge]) => {
 const unsub = after(name).change(() => {});
 unsub(); // Stop listening
 ```
+
+### Run-On-Mount + On-Change with effect()
+
+`after(...targets).effect(fn)` runs `fn` once with the current target
+values **and** on every subsequent change. This is the direct analog of
+React's `useEffect(fn, [deps])` — useful when an effect needs to sync the
+DOM (or any external system) with the initial state, not just react to
+later updates.
+
+```javascript
+import { after, state } from '@granularjs/core';
+
+const mode = state('dark');
+
+// Sync `data-theme` immediately AND whenever `mode` changes.
+after(mode).effect((current) => {
+  document.documentElement.setAttribute('data-theme', current);
+});
+// → on construction: setAttribute('data-theme', 'dark')
+// → after `mode.set('light')`: setAttribute('data-theme', 'light')
+
+// Multiple targets:
+after(width, height).effect(([w, h]) => {
+  canvas.resize(w, h);
+});
+```
+
+`.effect(fn)` returns the same unsubscribe function as `.change(fn)`.
+
+Pick the right verb:
+
+- `.change(fn)` — reacts only to **changes**. Use when the initial value
+  is irrelevant (e.g. logging, analytics, persisting future writes).
+- `.effect(fn)` — runs **once now + on changes**. Use when the side
+  effect must keep an external surface (DOM attributes, native APIs,
+  storage) in sync with the reactive state from the very first render.
+- `.compute(fn)` — produces a **derived reactive value**. Use when you
+  want a new state object the rest of the tree can subscribe to.
 
 ### Computing Derived Values
 

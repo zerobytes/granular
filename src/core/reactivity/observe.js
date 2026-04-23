@@ -189,6 +189,21 @@ export function capture({ name, subscription }, ...targets) {
         }
       };
     },
+    effect(fn) {
+      const initialValues = list.map(valueForTarget);
+      try {
+        if (isSingleTarget) {
+          fn(initialValues[0], undefined, null);
+        } else {
+          fn(initialValues, list.map(() => undefined), list.map(() => null));
+        }
+      } catch (err) {
+        if (typeof console !== 'undefined' && typeof console.error === 'function') {
+          console.error(err);
+        }
+      }
+      return this.change(fn);
+    },
     compute(fn, options = {}) {
       let disposed = false;
       let pendingAutoDispose = false;

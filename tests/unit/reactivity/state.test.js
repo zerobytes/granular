@@ -179,3 +179,35 @@ test('colliding property is reactive as a text child', () => {
   assert.equal(s.event.subscribe.get(), 'paid');
   assert.deepEqual(changes, ['paid']);
 });
+
+// ─── effect (run + change) ──────────────────────────────────────────────
+
+test('after(target).effect(fn) runs once with the current value and on subsequent changes', () => {
+  const s = state({ mode: 'dark' });
+  const calls = [];
+  const unsub = after(s.mode).effect((next, prev) => calls.push([next, prev]));
+
+  assert.deepEqual(calls, [['dark', undefined]]);
+
+  s.mode.set('light');
+  assert.deepEqual(calls, [['dark', undefined], ['light', 'dark']]);
+
+  unsub();
+  s.mode.set('dark');
+  assert.deepEqual(calls, [['dark', undefined], ['light', 'dark']]);
+});
+
+test('after(a, b).effect(fn) runs once with both values and on subsequent changes', () => {
+  const a = state(1);
+  const b = state(2);
+  const calls = [];
+  after(a, b).effect(([na, nb]) => calls.push([na, nb]));
+
+  assert.deepEqual(calls, [[1, 2]]);
+
+  a.set(10);
+  assert.deepEqual(calls, [[1, 2], [10, 2]]);
+
+  b.set(20);
+  assert.deepEqual(calls, [[1, 2], [10, 2], [10, 20]]);
+});

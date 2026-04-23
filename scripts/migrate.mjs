@@ -30,6 +30,7 @@ const CODEMODS_ORDERED = [
   'react-namespace',
   'react-component-to-variadic',
   'react-imports',
+  'state-deref-args',
 ];
 
 const SOURCE_EXTS = new Set(['.js', '.jsx', '.ts', '.tsx']);
