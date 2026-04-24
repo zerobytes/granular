@@ -44,27 +44,149 @@ If your UI should be fast **and** your code should still look like code, this is
 > npm install  -g @granularjs/cli
 > ```
 
-## Quick Start
+## The Granular workflow
 
-Create a new Granular app with Vite:
+Granular is more than a runtime - it ships a small, focused toolchain so you can go from "first commit" to "production" without leaving the ecosystem. This is the day-to-day flow we recommend.
+
+### 0. Prerequisites
+
+- **Required:** Node.js LTS + a package manager (npm, pnpm or yarn).
+- **Strongly recommended:** the [`granular-vscode`](https://github.com/zerobytes/granular-vscode) extension. It runs the same `@granularjs/lint` the CLI uses, so what shows up in your editor is exactly what fails in CI.
+- **For AI assistants:** always include [`GRANULAR_AI_GUIDE.md`](GRANULAR_AI_GUIDE.md) in the agent context. It is the canonical reference for primitives and anti-patterns, written with LLMs in mind.
+
+### 1. Install the umbrella CLI
 
 ```bash
-npm create @granularjs/app my-app
+npm install -g @granularjs/cli
+granular --version
+```
+
+`granular` is a single dispatcher for the whole ecosystem:
+
+| Command | Purpose | Backed by |
+| --- | --- | --- |
+| `granular create`  | Scaffold a new app | `@granularjs/create-app` |
+| `granular lint`    | Lint a file or directory | `@granularjs/lint` |
+| `granular audit`   | Project-wide JSON report | `@granularjs/lint` |
+| `granular migrate` | Apply codemods (e.g. React → Granular) | `@granularjs/codemods` |
+| `granular docs`    | Serve the local module reference | `@granularjs/core` |
+
+### 2. Bootstrap your project
+
+**New project**
+
+```bash
+granular create my-app          # vanilla tag-functions (recommended default)
+granular create my-app --jsx    # with @granularjs/jsx
+granular create my-app --ssr    # with @granularjs/ssr
 cd my-app
+npm install
 npm run dev
 ```
 
-Or install in an existing project:
+Pick the template that matches your team:
+
+- **vanilla** - zero deps, the most idiomatic, the closest mental model to Granular itself.
+- **jsx** - for teams coming from React; uses `@granularjs/jsx` as the JSX runtime.
+- **ssr** - when you need server-side rendering or edge delivery.
+
+**Existing Granular project**
 
 ```bash
-npm install @granularjs/core @granularjs/ui
+npm install
+granular --version    # confirm the CLI is available
 ```
 
-This creates a new project with:
-- Vite dev server with hot reload
-- granular + @granular/ui
-- Pre-configured routing
-- Example pages with reactivity demos
+**Migrating from React**
+
+```bash
+granular migrate ./src
+```
+
+### 3. The inner loop
+
+Daily ritual while building features:
+
+1. `npm run dev` running in one terminal.
+2. Editor showing diagnostics from `granular-vscode` in real time (recommended).
+3. Before committing a chunk of work:
+   ```bash
+   granular lint src/
+   ```
+4. When you forget which primitive does what:
+   ```bash
+   granular docs    # serves the module reference at http://localhost:<port>
+   ```
+5. When pair-programming with an AI assistant: after every patch, run `granular lint` and feed the output back to the agent. The linter catches almost every bad reactive pattern an LLM might emit.
+
+### 4. Pre-commit safety net
+
+Add a git hook so anti-patterns never reach `main`. With husky + lint-staged:
+
+```json
+{
+  "scripts": {
+    "prepare": "husky install"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": "granular lint --max-warnings=0"
+  }
+}
+```
+
+```bash
+npx husky add .husky/pre-commit "npx lint-staged"
+```
+
+### 5. CI/CD
+
+The minimum recommended pipeline:
+
+```yaml
+# .github/workflows/ci.yml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - run: npx granular lint --format=json --max-warnings=0
+      - run: npx granular audit --format=json
+      - run: npm test
+      - run: npm run build
+```
+
+### 6. Maintenance
+
+- Run `granular audit` periodically. The JSON report is great PR-comment material and excellent context for AI-driven refactors.
+- Keep `core`, `cli`, `lint` and `jsx` updated together when crossing a major.
+- Version `GRANULAR_AI_GUIDE.md` (or a project-specific addendum) inside the repo, so humans and IAs onboard from the same source of truth.
+
+## Engineering principles for Granular projects
+
+A few habits that keep Granular code clean over time:
+
+- **Lint-driven development.** Linter errors are usually real bugs (`no-state-truthy-and`, `prefer-when-over-ternary`, `prefer-list-over-map`). Don't suppress them - fix the design.
+- **State lives close to who uses it.** Promote to a parent only when 2+ consumers need it. Globals belong in `src/stores/`.
+- **Editor = CI = AI.** All three consume the same `@granularjs/lint`. If your editor is green, CI is green.
+- **Components run once.** Any logic that *re-runs* on its own is a smell - you're probably constructing inside a render path instead of using `compute`.
+- **No reactive primitives in raw conditionals.** `state && Div(...)` is a bug; use `when(state, () => Div(...))` or `match(...)`. The linter enforces this.
+- **One file, one purpose.** Suggested layout for vanilla projects:
+  ```
+  src/
+    pages/        # route = file
+    components/   # reusable UI
+    stores/       # observableArray, persist, signal
+    services/     # pure I/O (fetch, ws, etc.)
+    main.js
+  ```
 
 ## A Tiny Example
 
