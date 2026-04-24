@@ -26,6 +26,24 @@ If your UI should be fast **and** your code should still look like code, this is
 - **No build required**: runs directly in the browser (ESM).
 - **No dependency pile-up**: no 300‑package dependency tree just to render a button.
 
+## Tooling lives outside the core
+
+`@granularjs/core` is runtime-only and ships with **zero runtime dependencies**. The CLI, linter, codemods and project scaffolder live in dedicated packages:
+
+| Tool | Package |
+| --- | --- |
+| `granular` umbrella CLI | [`@granularjs/cli`](https://www.npmjs.com/package/@granularjs/cli) |
+| Linter | [`@granularjs/lint`](https://www.npmjs.com/package/@granularjs/lint) |
+| Codemods (React → Granular) | [`@granularjs/codemods`](https://www.npmjs.com/package/@granularjs/codemods) |
+| App scaffolder | [`@granularjs/create-app`](https://www.npmjs.com/package/@granularjs/create-app) |
+
+> **Breaking change in 3.0.0:** the `granular` binary used to ship inside `@granularjs/core`. It now lives in `@granularjs/cli`. To keep using `granular lint|audit|create|migrate|docs`, install the umbrella CLI:
+>
+> ```bash
+> npm uninstall -g @granularjs/core   # if you had it installed globally for the bin
+> npm install  -g @granularjs/cli
+> ```
+
 ## Quick Start
 
 Create a new Granular app with Vite:
