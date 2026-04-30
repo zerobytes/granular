@@ -7,9 +7,12 @@
 ## What it provides
 
 - `before()` and `after()` event phases through `EventHub`
+- `set(cb)` to batch multiple assignments into one flush
+- `update()` to manually flush the dirty set (normally driven by the scheduler)
 - property instrumentation with getter/setter wrapping
 - dirty property accumulation
-- microtask flush scheduling
+- flush scheduling through the central `scheduler` (not a local microtask), with an `AfterFlush.schedule()` tick after each flush
+- `before('set')` handlers can return `false` to cancel the assignment
 - per-property subscribers for bindings
 - automatic observableArray wiring on bound properties
 

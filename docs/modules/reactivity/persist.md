@@ -14,18 +14,20 @@
 ## Startup behavior
 
 - requires `options.key`
+- defaults `options.storage` to `localStorage` when available, and validates it through `safeStorage()`; throws if no usable storage exists
 - reads storage immediately
-- deserializes payload
-- understands `{ v, data }` versioned payloads
-- can run `migrate()` when stored version differs
-- can run `reconcile()` before applying
+- deserializes payload through `options.deserialize` (default `JSON.parse`)
+- understands `{ v, data }` versioned payloads, where `v` defaults to `options.version` (defaults to `1`)
+- can run `migrate(data, storedVersion)` when stored version differs
+- can run `reconcile(data)` before applying
 
 ## Write behavior
 
-- serializes snapshot back to storage on change
-- optional `paths` limits persistence to selected paths
-- optional `throttle` delays writes
-- if nothing exists yet, it writes the initial snapshot immediately
+- serializes the snapshot back through `options.serialize` (default strips functions and symbols via `JSON.stringify`)
+- writes payloads as `{ v: version, data: snapshot }`
+- optional `paths` limits persistence to selected dot-paths (cloned out of the full snapshot)
+- optional `throttle` (ms) coalesces writes through a single timer; without it, writes happen synchronously
+- if nothing exists in storage yet, an initial snapshot is written immediately
 
 ## Implemented details
 

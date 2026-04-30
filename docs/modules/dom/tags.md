@@ -29,8 +29,12 @@ Tags do not need spreaded arrays to render children. If an array is passed as a 
 
 ## Exports
 
-- `Elements` object with all factories
+- `Elements` — frozen object mapping factory name → factory, covering the static tag list
 - named exports for all HTML tags
+
+## Naming and global collisions
+
+Factory names are the tag with its first letter uppercased (`div` → `Div`). When that name already exists on `globalThis`, the prefix `Html` is added — for example, `object` becomes `HtmlObject` because `Object` is a global.
 
 ## Design implication
 

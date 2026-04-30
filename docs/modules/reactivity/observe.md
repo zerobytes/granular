@@ -20,11 +20,16 @@ This module implements `after()`, `before()`, `set()`, and `subscribe()`. It is 
 - for a single target, calls `fn(next, prev, ctx)`
 - for multiple targets, calls `fn(nextList, prevList, ctxList)`
 
+`effect(fn)`:
+
+- same shape as `change`, but runs `fn` once synchronously with the current values before subscribing
+- the initial call is wrapped in a try/catch that logs through `console.error`
+
 For `observableArray`, `next` and `prev` are lazy functions returning snapshots, and `ctx.patch` contains the patch payload.
 
 ## before(...targets)
 
-`before()` mirrors the same surface, but handlers run before commit.
+`before()` mirrors the same surface (`change`, `effect`, `compute`), but handlers run before commit.
 
 Returning `false` cancels:
 
@@ -39,12 +44,21 @@ Returning `false` cancels:
 Features already implemented:
 
 - variadic dependencies
-- debounce
-- custom hash skip
-- custom equals skip
-- async compute
-- keepAlive / auto-dispose behavior
+- `debounce`
+- custom `hash` skip
+- custom `equals` skip
+- async compute (promise results respect `runId`)
+- `keepAlive` / auto-dispose behavior driven by the inner signal's `onEmpty`/`onSubscribe`
+- `onError(err)` for both sync and rejected-async errors; falls back to `console.error`
 - `dispose()` on the computed value
+
+## set(target, value)
+
+Imperative writer that dispatches to the right primitive:
+
+- `state` / `state path` → `setStateValue`
+- `signal` → `setSignal`
+- `observableArray` → `target.reset(value)` (throws if `reset` is missing)
 
 ## subscribe(target, selector, listener?, equalityFn?)
 

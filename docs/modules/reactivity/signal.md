@@ -6,6 +6,7 @@
 
 ## Core contract
 
+- `signal(initial, options?)` creates the cell; options are `onSubscribe()` and `onEmpty()` lifecycle hooks fired when the subscriber set transitions
 - `get()` reads the current value
 - `set(next, force?)` writes
 - `patch(next)` merges plain-object payloads into a cloned snapshot
@@ -15,9 +16,19 @@
 ## Important semantics
 
 - `before()` runs before commit and can cancel by returning `false`
-- `set()` skips notification on strict equality unless `force` is true
+- `set()` skips notification on strict equality unless `force` is true, and returns `false` when a `before` hook cancels
+- `patch()` returns `false` when nothing changed, and falls back to `set(next, true)` for non-plain-object inputs
 - object patching is structural and shallow-recursive for nested plain objects
 - arrays are not merged by `patch`; they become full replacements
+
+## Module exports
+
+Beyond `signal()`, the file exports thin helpers that take a signal proxy:
+
+- `isSignal(v)`
+- `readSignal(s)` / `setSignal(s, next, force?)` / `patchSignal(s, next)`
+- `subscribeSignal(s, fn)`
+- `getMappedArrayMeta(value)` returns the `{ signal, mapFn }` metadata stamped on the array produced by a signal-array `.map()`
 
 ## Proxy behavior
 

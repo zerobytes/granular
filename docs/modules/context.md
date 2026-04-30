@@ -6,8 +6,8 @@
 
 ## Returned API
 
-- `scope(value?)`
-- `state()`
+- `scope(value?)` - opens a provider level; `value` defaults to `defaultValue`
+- `state()` - returns a state-like consumer bound to the nearest ancestor provider
 
 ## Provider model
 
@@ -15,29 +15,35 @@
 
 The provider proxy also exposes:
 
-- `serve(renderable)`
+- `serve(...children)` - flattens array children and wraps the subtree in a `ContextProvider` renderable
 
-`serve()` wraps a child tree in a `ContextProvider` renderable.
+`ContextProvider` is a `Renderable`:
+
+- on `mountInto`, it connects every queued consumer to the provider signal, pushes itself on `mountStack` while children mount (so descendant `state()` calls bind to it), then pops
+- on `unmount`, it disconnects construction-time and mount-time consumers and removes the provider entry from `providerStack`
+- `renderToString(render)` is implemented for SSR: it connects consumers, joins child output, then pops
 
 ## Consumer model
 
 `state()` returns a state-like consumer object backed by:
 
-- a local fallback signal
-- an active provider signal when connected
+- a local fallback signal, used when no provider is connected
+- an active provider signal once connected
 
-Consumers can connect in two ways:
+Consumers can connect in three ways:
 
+- during mount-time rendering, through `mountStack` (top wins)
 - during provider construction, through `providerStack`
-- during mount-time rendering, through `mountStack`
+- otherwise the consumer is queued in `pending` and connected by the next `serve()`
 
-That second path matters for branches created later by runtime nodes such as `when` and `list`.
+That mount-time path matters for branches created later by runtime nodes such as `when` and `list`.
 
 ## Important semantics
 
 - consumers expose the same state-like surface as normal state
-- the active provider can change
-- fallback local value still exists even when no provider is connected
+- the active provider can change; `_connect` is idempotent for the same signal and emits a notify when the value differs from the previous one
+- on `_disconnect`, the consumer falls back to the local signal and re-subscribes to it
+- the local fallback value still exists even when no provider is connected
 
 ## Current nuance in the implementation
 

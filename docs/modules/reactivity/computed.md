@@ -8,9 +8,10 @@
 
 - if input is already a computed state, it is returned as-is
 - if input is a signal/state/state-path holding a non-function value, it becomes `after(input).compute(next => next)`
-- if input is a signal/state/state-path holding a function, the function is re-read on each call
-- if input is a plain object, each property is lazily converted and cached
-- if input is a plain scalar, it is wrapped through a tiny state and mirrored as computed
+- if input is a signal/state/state-path holding a function, a wrapper is returned that re-reads the latest function and forwards arguments on each call
+- if input is itself a function, it is returned as-is
+- if input is a plain object, each property is lazily converted by the same rules and cached on a proxy
+- if input is a plain scalar (or `null`/`undefined`), it is wrapped through a fresh `state(value)` and exposed as a computed
 
 ## Important nuance
 

@@ -4,6 +4,10 @@
 
 This file groups internal symbols used to avoid public-name collisions.
 
+## Export
+
+A single frozen object `INTERNAL` is exported. Its keys are accessed as `INTERNAL.instrumentBoundProp`, `INTERNAL.subscribeProp`, `INTERNAL.noValue`.
+
 ## Symbols
 
 - `instrumentBoundProp`

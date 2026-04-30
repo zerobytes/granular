@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`concat()` builds a reactive string from mixed static and reactive parts.
+`concat()` builds a reactive string from mixed static and reactive parts. The same file also exports the tagged-template helpers `tpl` and `cls`.
 
 ## Supported parts
 
@@ -30,6 +30,11 @@ The last argument may be an options object with:
 
 - if no reactive targets are found, `concat()` returns a plain string immediately
 - if reactive targets exist, it returns a computed reactive string
+
+## tpl and cls
+
+- `` tpl`...` `` is a tagged-template wrapper around `concat` with `separator: ''`
+- `` cls`...` `` does the same and then collapses runs of whitespace and trims; if the result is reactive, the trim happens inside an `after(...).compute(...)`
 
 ## Design implication
 
