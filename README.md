@@ -1,4 +1,4 @@
-# Granular Framework (WIP)
+# Granular Framework
 
 Granular is a JS-first frontend framework built for performance, clarity, and real control.
 No template DSL, no VDOM, no magic compile step - just explicit reactivity and direct DOM updates.
